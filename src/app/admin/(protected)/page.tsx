@@ -20,13 +20,14 @@ export default function AdminDashboardPage() {
     <>
       <AdminHeader
         title="Dashboard"
-        description="Overview of your XMBroider site content. Data is loaded from local mock content until Firestore is connected."
+        description="Overview of your XMBroider site content and admin tools."
       />
 
       <div className="flex-1 space-y-8 p-6 lg:p-8">
         <div className={adminNotice}>
-          UI-only admin shell — changes are not saved yet. Firestore and
-          authentication will be added in a later phase.
+          Admin authentication is active. Site content can now be saved to
+          Firestore. Gallery, services, and quotes are still local-only until
+          connected.
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

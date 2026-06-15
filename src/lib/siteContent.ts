@@ -59,6 +59,16 @@ export type SiteSeo = {
   description: string;
 };
 
+/** Fields editable from /admin/site and stored in Firestore. */
+export type EditableSiteContent = {
+  brand: SiteBrand;
+  hero: {
+    title: string;
+    subtitle: string;
+  };
+  seo: SiteSeo;
+};
+
 export type SiteContent = {
   siteId: string;
   brand: SiteBrand;
@@ -395,3 +405,17 @@ export function getSiteContent(siteId: string = "xmbroider"): SiteContent {
 
 /** Default site content for the current deployment */
 export const siteContent = getSiteContent("xmbroider");
+
+export function getFallbackEditableContent(
+  siteId: string = siteContent.siteId,
+): EditableSiteContent {
+  const content = getSiteContent(siteId);
+  return {
+    brand: { ...content.brand },
+    hero: {
+      title: content.hero.title,
+      subtitle: content.hero.subtitle,
+    },
+    seo: { ...content.seo },
+  };
+}
