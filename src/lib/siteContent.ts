@@ -364,7 +364,7 @@ const xmbroiderContent: SiteContent = {
     form: {
       submitLabel: "Submit Quote Request",
       disclaimer:
-        "Quote form backend coming soon. Contact placeholders: (401) 000-0000 · info@xmbroider.com",
+        "We typically respond within one business day. Your information is used only to prepare your quote.",
       serviceOptions: [
         { value: "embroidery", label: "Custom Embroidery" },
         { value: "dtf", label: "DTF Heat Press" },

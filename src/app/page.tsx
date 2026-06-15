@@ -402,7 +402,7 @@ export default async function Home() {
                 {quoteSection.title}
               </h2>
               <p className="mt-4 text-muted">{quoteSection.description}</p>
-              <QuoteForm form={quoteSection.form} />
+              <QuoteForm siteId={content.siteId} form={quoteSection.form} />
             </div>
           </div>
         </section>

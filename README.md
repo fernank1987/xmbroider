@@ -23,15 +23,16 @@ Firestore structure:
 - `sites/{siteId}` — parent site summary (`siteId`, `businessName`, `tagline`, timestamps)
 - `sites/{siteId}/content/main` — editable brand, hero, and SEO content (brand may include `logoUrl`, `logoStoragePath`, and `logoAlt`)
 - `sites/{siteId}/gallery/{galleryItemId}` — gallery metadata (`title`, `category`, `imageUrl`, `storagePath`, `isVisible`, `sortOrder`, timestamps)
+- `sites/{siteId}/quoteRequests/{quoteRequestId}` — public quote form submissions (`name`, `email`, `phone`, `serviceNeeded`, `projectDetails`, `quantity`, `deadline`, `status`, `source`, timestamps)
 
 Storage structure:
 
 - `sites/{siteId}/gallery/{generatedFileName}` — uploaded gallery image files
 - `sites/{siteId}/brand/{generatedFileName}` — uploaded brand logo files (PNG, JPG, WebP, or SVG; max 5MB)
 
-Example for this project: `sites/xmbroider`, `sites/xmbroider/content/main`, and `sites/xmbroider/gallery/{galleryItemId}`.
+Example for this project: `sites/xmbroider`, `sites/xmbroider/content/main`, `sites/xmbroider/gallery/{galleryItemId}`, and `sites/xmbroider/quoteRequests/{quoteRequestId}`.
 
-Other Firebase repositories in `src/lib/firebase/` (quote requests) are placeholders until connected.
+All Firebase repositories in `src/lib/firebase/` are connected for site content, gallery, brand logos, and quote requests.
 
 ## Firebase setup (optional)
 
@@ -62,7 +63,7 @@ Repositories:
 - `src/lib/firebase/siteContentRepository.ts` — editable site content and brand logo metadata (connected)
 - `src/lib/firebase/galleryRepository.ts` — gallery metadata (connected)
 - `src/lib/firebase/storageRepository.ts` — gallery and brand logo uploads (connected)
-- `src/lib/firebase/quoteRepository.ts` — quote form submissions (placeholder)
+- `src/lib/firebase/quoteRepository.ts` — quote form submissions and admin quote management (connected)
 
 If env vars are missing, Firebase exports are `null` and the app continues using `siteContent.ts`.
 
@@ -88,6 +89,11 @@ service cloud.firestore {
       match /gallery/{galleryItemId} {
         allow read: if true;
         allow write: if request.auth != null;
+      }
+
+      match /quoteRequests/{quoteRequestId} {
+        allow create: if true;
+        allow read, update, delete: if request.auth != null;
       }
     }
   }
