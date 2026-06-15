@@ -51,6 +51,13 @@ export default async function Home() {
     firestoreGalleryItems.length > 0
       ? firestoreGalleryItems
       : mapFallbackGalleryItems(content.gallery.items);
+  const heroFeaturedImage = galleryDisplayItems.find((item) => item.imageUrl);
+  const galleryGridClassName =
+    galleryDisplayItems.length === 1
+      ? "mx-auto mt-12 grid max-w-md grid-cols-1 gap-6"
+      : galleryDisplayItems.length === 2
+        ? "mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2"
+        : "mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3";
   const {
     hero,
     servicesSection,
@@ -75,30 +82,74 @@ export default async function Home() {
       <main>
         <section className="relative overflow-hidden border-b border-border bg-surface">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-accent/10 via-transparent to-transparent" />
-          <div className="relative mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8 lg:py-28">
-            <div className="max-w-3xl">
-              <p className="mb-4 inline-flex rounded-full border border-border bg-background px-3 py-1 text-xs font-medium uppercase tracking-wider text-muted">
-                {hero.badge}
-              </p>
-              <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl lg:text-5xl lg:leading-tight">
-                {hero.title}
-              </h1>
-              <p className="mt-6 max-w-2xl text-lg leading-relaxed text-muted sm:text-xl">
-                {hero.subtitle}
-              </p>
-              <div className="mt-10 flex flex-col gap-4 sm:flex-row">
-                <a
-                  href={hero.primaryCta.href}
-                  className="inline-flex items-center justify-center rounded-lg bg-accent px-6 py-3.5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-accent-hover"
-                >
-                  {hero.primaryCta.label}
-                </a>
-                <a
-                  href={hero.secondaryCta.href}
-                  className="inline-flex items-center justify-center rounded-lg border border-border bg-background px-6 py-3.5 text-base font-semibold text-foreground transition-colors hover:bg-foreground/5"
-                >
-                  {hero.secondaryCta.label}
-                </a>
+          <div className="relative mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8 lg:py-20">
+            <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-12 xl:gap-16">
+              <div className="max-w-xl lg:max-w-none">
+                <p className="mb-4 inline-flex rounded-full border border-border bg-background px-3 py-1 text-xs font-medium uppercase tracking-wider text-muted">
+                  {hero.badge}
+                </p>
+                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl lg:text-5xl lg:leading-tight">
+                  {hero.title}
+                </h1>
+                <p className="mt-5 max-w-2xl text-lg leading-relaxed text-muted sm:text-xl">
+                  {hero.subtitle}
+                </p>
+                <div className="mt-8 flex flex-col gap-4 sm:flex-row">
+                  <a
+                    href={hero.primaryCta.href}
+                    className="inline-flex items-center justify-center rounded-lg bg-accent px-6 py-3.5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-accent-hover"
+                  >
+                    {hero.primaryCta.label}
+                  </a>
+                  <a
+                    href={hero.secondaryCta.href}
+                    className="inline-flex items-center justify-center rounded-lg border border-border bg-background px-6 py-3.5 text-base font-semibold text-foreground transition-colors hover:bg-foreground/5"
+                  >
+                    {hero.secondaryCta.label}
+                  </a>
+                </div>
+              </div>
+
+              <div className="mx-auto w-full max-w-md lg:mx-0 lg:max-w-none">
+                {heroFeaturedImage?.imageUrl ? (
+                  <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-lg shadow-foreground/5">
+                    <div className="relative aspect-[4/3] bg-foreground/[0.04]">
+                      <Image
+                        src={heroFeaturedImage.imageUrl}
+                        alt={heroFeaturedImage.title}
+                        fill
+                        className="object-contain p-4 sm:p-6"
+                        sizes="(max-width: 1024px) 100vw, 480px"
+                        priority
+                      />
+                    </div>
+                    <div className="border-t border-border px-4 py-3.5 sm:px-5">
+                      <p className="text-sm font-semibold text-foreground">
+                        {heroFeaturedImage.title}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted">
+                        {heroFeaturedImage.category}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className="overflow-hidden rounded-2xl border border-dashed border-border bg-background/80 shadow-sm"
+                    aria-hidden="true"
+                  >
+                    <div className="flex aspect-[4/3] flex-col items-center justify-center bg-foreground/[0.03] px-6">
+                      <div className="flex h-24 w-24 items-center justify-center rounded-2xl border border-border bg-background">
+                        <GalleryPlaceholderIcon />
+                      </div>
+                      <p className="mt-5 text-sm font-medium text-foreground">
+                        {previewSection.mockupTitle}
+                      </p>
+                      <p className="mt-1 max-w-xs text-center text-xs text-muted">
+                        {previewSection.mockupSubtitle}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -309,38 +360,34 @@ export default async function Home() {
             <p className="mt-4 text-muted">{gallery.description}</p>
           </div>
 
-          <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className={galleryGridClassName}>
             {galleryDisplayItems.map((item) => (
-              <div
+              <article
                 key={item.id}
-                className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-border bg-surface"
+                className="group overflow-hidden rounded-2xl border border-border bg-surface shadow-sm transition-shadow hover:shadow-md"
               >
-                {item.imageUrl ? (
-                  <>
+                <div className="relative aspect-[4/3] bg-foreground/[0.04]">
+                  {item.imageUrl ? (
                     <Image
                       src={item.imageUrl}
                       alt={item.title}
                       fill
-                      className="object-cover transition-transform group-hover:scale-105"
+                      className="object-contain p-3 transition-transform duration-300 group-hover:scale-[1.02] sm:p-4"
                       sizes="(max-width: 768px) 100vw, 33vw"
                     />
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4">
-                      <p className="text-sm font-medium text-white">
-                        {item.title}
-                      </p>
-                      <p className="text-xs text-white/80">{item.category}</p>
+                  ) : (
+                    <div className="flex h-full flex-col items-center justify-center p-6 transition-colors group-hover:bg-foreground/[0.06]">
+                      <GalleryPlaceholderIcon />
                     </div>
-                  </>
-                ) : (
-                  <div className="flex h-full flex-col items-center justify-center bg-foreground/[0.03] p-6 transition-colors group-hover:bg-foreground/[0.06]">
-                    <GalleryPlaceholderIcon />
-                    <p className="mt-3 text-sm font-medium text-foreground">
-                      {item.title}
-                    </p>
-                    <p className="mt-1 text-xs text-muted">{item.category}</p>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+                <div className="border-t border-border px-4 py-3.5 sm:px-5">
+                  <h3 className="text-sm font-semibold text-foreground">
+                    {item.title}
+                  </h3>
+                  <p className="mt-0.5 text-xs text-muted">{item.category}</p>
+                </div>
+              </article>
             ))}
           </div>
         </section>

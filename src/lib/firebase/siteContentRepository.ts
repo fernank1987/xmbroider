@@ -1,4 +1,5 @@
 import {
+  deleteField,
   doc,
   getDoc,
   serverTimestamp,
@@ -11,8 +12,10 @@ import {
   getSiteContent,
   siteContent,
   type EditableSiteContent,
+  type SiteBrand,
   type SiteContent,
 } from "@/lib/siteContent";
+import { deleteBrandLogo } from "./storageRepository";
 import { db, isFirebaseConfigured } from "./client";
 
 const FIREBASE_DISABLED_MESSAGE =
@@ -118,6 +121,53 @@ function mergeEditableIntoSiteContent(
   };
 }
 
+function buildBrandWritePayload(
+  brand: SiteBrand,
+  options?: { clearLogo?: boolean },
+): Record<string, unknown> {
+  const base = {
+    name: brand.name,
+    tagline: brand.tagline,
+    phone: brand.phone,
+    email: brand.email,
+    location: brand.location,
+  };
+
+  if (options?.clearLogo) {
+    return {
+      ...base,
+      logoAlt: brand.name,
+      logoUrl: deleteField(),
+      logoStoragePath: deleteField(),
+    };
+  }
+
+  const payload: Record<string, unknown> = { ...base };
+
+  if (brand.logoUrl) {
+    payload.logoUrl = brand.logoUrl;
+  }
+  if (brand.logoStoragePath) {
+    payload.logoStoragePath = brand.logoStoragePath;
+  }
+  if (brand.logoAlt !== undefined) {
+    payload.logoAlt = brand.logoAlt;
+  }
+
+  return payload;
+}
+
+function buildBrandWithoutLogo(brand: SiteBrand): SiteBrand {
+  return {
+    name: brand.name,
+    tagline: brand.tagline,
+    phone: brand.phone,
+    email: brand.email,
+    location: brand.location,
+    logoAlt: brand.name,
+  };
+}
+
 /**
  * Loads site content from Firestore at sites/{siteId}/content/main.
  * Returns merged content when a document exists, otherwise null.
@@ -212,7 +262,7 @@ export async function saveSiteContentToFirestore(
       contentRef,
       {
         siteId,
-        brand: content.brand,
+        brand: buildBrandWritePayload(content.brand),
         hero: content.hero,
         seo: content.seo,
         updatedAt: serverTimestamp(),
@@ -232,6 +282,61 @@ export async function saveSiteContentToFirestore(
       { merge: true },
     ),
   ]);
+}
+
+/**
+ * Removes the brand logo from Firestore and deletes the Storage object when present.
+ */
+export async function removeBrandLogoFromFirestore(
+  siteId: string,
+  content: EditableSiteContent,
+): Promise<EditableSiteContent> {
+  if (!isFirebaseConfigured || !db) {
+    throw new Error(FIREBASE_DISABLED_MESSAGE);
+  }
+
+  const storagePath = content.brand.logoStoragePath;
+  if (storagePath) {
+    try {
+      await deleteBrandLogo(storagePath);
+    } catch {
+      // Best-effort cleanup when removing a logo.
+    }
+  }
+
+  const updatedContent: EditableSiteContent = {
+    ...content,
+    brand: buildBrandWithoutLogo(content.brand),
+  };
+
+  const contentRef = getSiteContentDocRef(siteId);
+  const siteRef = getSiteDocRef(siteId);
+
+  await Promise.all([
+    setDoc(
+      contentRef,
+      {
+        siteId,
+        brand: buildBrandWritePayload(content.brand, { clearLogo: true }),
+        hero: content.hero,
+        seo: content.seo,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    ),
+    setDoc(
+      siteRef,
+      {
+        siteId,
+        businessName: content.brand.name,
+        tagline: content.brand.tagline,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    ),
+  ]);
+
+  return updatedContent;
 }
 
 export function getFallbackEditableSiteContent(

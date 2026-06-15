@@ -68,11 +68,42 @@ export function generateBrandLogoFileName(contentType: string): string {
 
 export function validateBrandLogoFile(file: File): string | null {
   if (!BRAND_LOGO_ALLOWED_CONTENT_TYPES.includes(file.type as BrandLogoContentType)) {
-    return "Only PNG, JPG, WebP, and SVG images are allowed.";
+    return "Only PNG, JPG, WebP, and SVG (image/*) files are allowed.";
   }
 
   if (file.size > BRAND_LOGO_MAX_FILE_SIZE_BYTES) {
     return "Logo must be 5MB or smaller.";
+  }
+
+  return null;
+}
+
+const UNSAFE_SVG_PATTERNS = [
+  /<script[\s>]/i,
+  /javascript:/i,
+  /\son[a-z]+\s*=/i,
+  /<foreignobject/i,
+  /<iframe/i,
+];
+
+/** Validates file contents, including a basic safety scan for SVG logos. */
+export async function validateBrandLogoFileContents(
+  file: File,
+): Promise<string | null> {
+  const basicError = validateBrandLogoFile(file);
+  if (basicError) {
+    return basicError;
+  }
+
+  if (file.type !== "image/svg+xml") {
+    return null;
+  }
+
+  const text = await file.text();
+  for (const pattern of UNSAFE_SVG_PATTERNS) {
+    if (pattern.test(text)) {
+      return "SVG logo rejected for safety. Use a plain logo SVG without scripts, event handlers, or embedded HTML.";
+    }
   }
 
   return null;
@@ -129,7 +160,7 @@ export async function uploadBrandLogo(
     throw new Error(FIREBASE_DISABLED_MESSAGE);
   }
 
-  const validationError = validateBrandLogoFile(file);
+  const validationError = await validateBrandLogoFileContents(file);
   if (validationError) {
     throw new Error(validationError);
   }

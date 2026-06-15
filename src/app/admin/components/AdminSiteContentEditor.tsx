@@ -4,12 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getEditableSiteContentFromFirestore,
   getFallbackEditableSiteContent,
+  removeBrandLogoFromFirestore,
   saveSiteContentToFirestore,
 } from "@/lib/firebase/siteContentRepository";
 import {
   deleteBrandLogo,
   uploadBrandLogo,
   validateBrandLogoFile,
+  validateBrandLogoFileContents,
 } from "@/lib/firebase/storageRepository";
 import { siteContent, type EditableSiteContent } from "@/lib/siteContent";
 import {
@@ -50,8 +52,11 @@ export default function AdminSiteContentEditor() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [removingLogo, setRemovingLogo] = useState(false);
   const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null);
   const logoFileInputRef = useRef<HTMLInputElement>(null);
+  const hasCurrentLogo = Boolean(form.brand.logoUrl);
+  const logoBusy = uploadingLogo || removingLogo || saving;
 
   useEffect(() => {
     let cancelled = false;
@@ -157,11 +162,11 @@ export default function AdminSiteContentEditor() {
 
   const handleLogoUpload = async () => {
     if (!selectedLogoFile) {
-      setErrorMessage("Choose a logo file to upload.");
+      setErrorMessage("Choose a logo file first.");
       return;
     }
 
-    const validationError = validateBrandLogoFile(selectedLogoFile);
+    const validationError = await validateBrandLogoFileContents(selectedLogoFile);
     if (validationError) {
       setErrorMessage(validationError);
       return;
@@ -195,7 +200,7 @@ export default function AdminSiteContentEditor() {
       setForm(updatedForm);
       await saveSiteContentToFirestore(SITE_ID, updatedForm);
       setSource("firestore");
-      setStatusMessage("Logo uploaded and saved.");
+      setStatusMessage(hasCurrentLogo ? "Logo replaced and saved." : "Logo uploaded and saved.");
       setSelectedLogoFile(null);
       if (logoFileInputRef.current) {
         logoFileInputRef.current.value = "";
@@ -204,6 +209,38 @@ export default function AdminSiteContentEditor() {
       setErrorMessage(getUploadErrorMessage(error));
     } finally {
       setUploadingLogo(false);
+    }
+  };
+
+  const handleLogoRemove = async () => {
+    if (!form.brand.logoUrl) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Remove the current brand logo? The public header will fall back to the brand name text.",
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setRemovingLogo(true);
+    setStatusMessage(null);
+    setErrorMessage(null);
+
+    try {
+      const updatedForm = await removeBrandLogoFromFirestore(SITE_ID, form);
+      setForm(updatedForm);
+      setSource("firestore");
+      setSelectedLogoFile(null);
+      if (logoFileInputRef.current) {
+        logoFileInputRef.current.value = "";
+      }
+      setStatusMessage("Logo removed.");
+    } catch (error) {
+      setErrorMessage(getUploadErrorMessage(error));
+    } finally {
+      setRemovingLogo(false);
     }
   };
 
@@ -341,48 +378,65 @@ export default function AdminSiteContentEditor() {
                 />
               </div>
 
-              <div className="border-t border-slate-200 pt-4 admin-dark:border-zinc-700">
-                <h3 className="mb-3 text-sm font-semibold text-slate-900 admin-dark:text-white">
-                  Brand logo
-                </h3>
-                <p className={`mb-4 text-sm ${adminBodyText}`}>
+              <div className="border-t border-slate-200 pt-6 admin-dark:border-zinc-700">
+                <h3 className={adminSectionTitle}>Brand logo</h3>
+                <p className={`mt-2 text-sm ${adminBodyText}`}>
                   Upload a dedicated business logo. This is separate from gallery
                   images and is stored under{" "}
                   <code className="text-xs">sites/{SITE_ID}/brand/</code>.
                 </p>
+                <p className={`mt-2 text-sm ${adminBodyText}`}>
+                  For best header results, upload a tightly cropped transparent PNG
+                  or SVG.
+                </p>
 
-                {form.brand.logoUrl ? (
-                  <div className="mb-4 flex items-center gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 admin-dark:border-zinc-700 admin-dark:bg-zinc-900/50">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={form.brand.logoUrl}
-                      alt={form.brand.logoAlt || form.brand.name}
-                      className="h-10 w-auto max-w-[200px] object-contain"
-                    />
-                    <p className={`text-sm ${adminBodyText}`}>Current logo</p>
-                  </div>
-                ) : (
-                  <p className={`mb-4 text-sm ${adminBodyText}`}>
-                    No logo uploaded yet. The public header will use the brand name
-                    text until a logo is available.
-                  </p>
-                )}
-
-                <div className="space-y-4">
+                <div className="mt-5 space-y-5">
                   <div>
-                    <label htmlFor="brand-logo-file" className={adminLabel}>
-                      Logo file
-                    </label>
-                    <input
-                      ref={logoFileInputRef}
-                      id="brand-logo-file"
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg"
-                      onChange={handleLogoFileChange}
-                      className={adminInput}
-                    />
-                    <p className={`mt-1 text-xs ${adminBodyText}`}>
-                      PNG, JPG, WebP, or SVG. Max 5MB.
+                    <p className={`mb-2 text-xs font-medium uppercase tracking-wide text-slate-500 admin-dark:text-zinc-500`}>
+                      Current logo
+                    </p>
+                    {hasCurrentLogo ? (
+                      <div className="flex min-h-[140px] items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-8 admin-dark:border-zinc-700 admin-dark:bg-zinc-900/50">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={form.brand.logoUrl}
+                          alt={form.brand.logoAlt || form.brand.name}
+                          className="max-h-28 w-auto max-w-full object-contain sm:max-h-32"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex min-h-[140px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 text-center admin-dark:border-zinc-700 admin-dark:bg-zinc-900/30">
+                        <p className={`text-sm font-medium text-slate-700 admin-dark:text-zinc-300`}>
+                          No logo uploaded
+                        </p>
+                        <p className={`mt-1 text-sm ${adminBodyText}`}>
+                          The public header will use the brand name text until a logo
+                          is uploaded.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 admin-dark:border-zinc-700 admin-dark:bg-zinc-950">
+                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500 admin-dark:text-zinc-500">
+                      Header preview
+                    </p>
+                    <div className="flex items-center border-b border-slate-100 py-3 admin-dark:border-zinc-800">
+                      {hasCurrentLogo ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={form.brand.logoUrl}
+                          alt={form.brand.logoAlt || form.brand.name}
+                          className="h-auto max-h-11 w-auto max-w-[130px] object-contain sm:max-h-14 sm:max-w-[180px]"
+                        />
+                      ) : (
+                        <span className="text-lg font-bold tracking-tight text-slate-900 admin-dark:text-white">
+                          {form.brand.name}
+                        </span>
+                      )}
+                    </div>
+                    <p className={`mt-2 text-xs ${adminBodyText}`}>
+                      Matches the public header sizing on mobile and desktop.
                     </p>
                   </div>
 
@@ -402,18 +456,78 @@ export default function AdminSiteContentEditor() {
                     />
                   </div>
 
-                  <button
-                    type="button"
-                    disabled={uploadingLogo || saving || !selectedLogoFile}
-                    onClick={() => void handleLogoUpload()}
-                    className={
-                      uploadingLogo || saving || !selectedLogoFile
-                        ? adminButtonDisabled
-                        : "rounded-lg bg-amber-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 admin-dark:bg-amber-600 admin-dark:hover:bg-amber-500"
-                    }
-                  >
-                    {uploadingLogo ? "Uploading logo…" : "Upload logo"}
-                  </button>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 admin-dark:border-zinc-700 admin-dark:bg-zinc-900/40">
+                    <p className={`mb-3 text-sm font-medium text-slate-900 admin-dark:text-white`}>
+                      {hasCurrentLogo ? "Replace logo" : "Upload logo"}
+                    </p>
+
+                    <div>
+                      <label htmlFor="brand-logo-file" className={adminLabel}>
+                        Choose file
+                      </label>
+                      <input
+                        ref={logoFileInputRef}
+                        id="brand-logo-file"
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg"
+                        onChange={handleLogoFileChange}
+                        disabled={logoBusy}
+                        className={adminInput}
+                      />
+                      <p className={`mt-2 text-sm ${adminBodyText}`}>
+                        {selectedLogoFile ? (
+                          <>
+                            Selected file:{" "}
+                            <span className="font-medium text-slate-900 admin-dark:text-white">
+                              {selectedLogoFile.name}
+                            </span>
+                          </>
+                        ) : (
+                          "No file selected yet."
+                        )}
+                      </p>
+                      <p className={`mt-1 text-xs ${adminBodyText}`}>
+                        PNG, JPG, WebP, or SVG (image/*). Max 5MB. SVG files are
+                        scanned for unsafe content before upload.
+                      </p>
+                    </div>
+
+                    <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                      <button
+                        type="button"
+                        disabled={logoBusy || !selectedLogoFile}
+                        onClick={() => void handleLogoUpload()}
+                        className={
+                          logoBusy || !selectedLogoFile
+                            ? adminButtonDisabled
+                            : "rounded-lg bg-amber-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 admin-dark:bg-amber-600 admin-dark:hover:bg-amber-500"
+                        }
+                      >
+                        {uploadingLogo
+                          ? hasCurrentLogo
+                            ? "Replacing logo…"
+                            : "Uploading logo…"
+                          : hasCurrentLogo
+                            ? "Replace logo"
+                            : "Upload logo"}
+                      </button>
+
+                      {hasCurrentLogo && (
+                        <button
+                          type="button"
+                          disabled={logoBusy}
+                          onClick={() => void handleLogoRemove()}
+                          className={
+                            logoBusy
+                              ? adminButtonDisabled
+                              : "rounded-lg border border-red-300 bg-white px-5 py-2.5 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 admin-dark:border-red-500/40 admin-dark:bg-zinc-900 admin-dark:text-red-300 admin-dark:hover:bg-red-500/10"
+                          }
+                        >
+                          {removingLogo ? "Removing logo…" : "Remove logo"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>

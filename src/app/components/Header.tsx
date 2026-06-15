@@ -28,7 +28,7 @@ export default function Header({ content }: HeaderProps) {
               src={brand.logoUrl}
               alt={brand.logoAlt || brand.name}
               onError={() => setFailedLogoKey(logoKey)}
-              className="h-auto max-h-10 w-auto max-w-[96px] object-contain sm:max-h-12 sm:max-w-[120px]"
+              className="h-auto max-h-11 w-auto max-w-[130px] object-contain sm:max-h-14 sm:max-w-[180px]"
             />
           ) : (
             brand.name
