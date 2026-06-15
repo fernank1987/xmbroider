@@ -2,8 +2,28 @@ import Image from "next/image";
 import Footer from "./components/Footer";
 import Header from "./components/Header";
 import QuoteForm from "./components/QuoteForm";
+import { listPublicGalleryItems } from "@/lib/firebase/galleryRepository";
 import { loadPublicSiteContent } from "@/lib/firebase/siteContentRepository";
 import { getServiceIconPath } from "@/lib/serviceIcons";
+import type { GalleryItem as FallbackGalleryItem } from "@/lib/siteContent";
+
+type GalleryDisplayItem = {
+  id: string;
+  title: string;
+  category: string;
+  imageUrl?: string;
+};
+
+function mapFallbackGalleryItems(
+  items: FallbackGalleryItem[],
+): GalleryDisplayItem[] {
+  return items.map((item) => ({
+    id: item.id,
+    title: item.label,
+    category: item.category,
+    imageUrl: item.imageUrl,
+  }));
+}
 
 function GalleryPlaceholderIcon() {
   return (
@@ -26,6 +46,11 @@ function GalleryPlaceholderIcon() {
 
 export default async function Home() {
   const content = await loadPublicSiteContent();
+  const firestoreGalleryItems = await listPublicGalleryItems(content.siteId);
+  const galleryDisplayItems =
+    firestoreGalleryItems.length > 0
+      ? firestoreGalleryItems
+      : mapFallbackGalleryItems(content.gallery.items);
   const {
     hero,
     servicesSection,
@@ -285,7 +310,7 @@ export default async function Home() {
           </div>
 
           <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {gallery.items.map((item) => (
+            {galleryDisplayItems.map((item) => (
               <div
                 key={item.id}
                 className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-border bg-surface"
@@ -294,14 +319,14 @@ export default async function Home() {
                   <>
                     <Image
                       src={item.imageUrl}
-                      alt={item.label}
+                      alt={item.title}
                       fill
                       className="object-cover transition-transform group-hover:scale-105"
                       sizes="(max-width: 768px) 100vw, 33vw"
                     />
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4">
                       <p className="text-sm font-medium text-white">
-                        {item.label}
+                        {item.title}
                       </p>
                       <p className="text-xs text-white/80">{item.category}</p>
                     </div>
@@ -310,7 +335,7 @@ export default async function Home() {
                   <div className="flex h-full flex-col items-center justify-center bg-foreground/[0.03] p-6 transition-colors group-hover:bg-foreground/[0.06]">
                     <GalleryPlaceholderIcon />
                     <p className="mt-3 text-sm font-medium text-foreground">
-                      {item.label}
+                      {item.title}
                     </p>
                     <p className="mt-1 text-xs text-muted">{item.category}</p>
                   </div>

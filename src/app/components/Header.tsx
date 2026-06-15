@@ -10,7 +10,10 @@ type HeaderProps = {
 
 export default function Header({ content }: HeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [failedLogoKey, setFailedLogoKey] = useState<string | null>(null);
   const { brand, navigation, headerCta } = content;
+  const logoKey = brand.logoUrl ?? "";
+  const showLogo = Boolean(logoKey) && failedLogoKey !== logoKey;
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
@@ -19,12 +22,13 @@ export default function Header({ content }: HeaderProps) {
           href="/"
           className="inline-flex shrink-0 items-center text-lg font-bold tracking-tight text-foreground sm:text-xl"
         >
-          {brand.logoUrl ? (
+          {showLogo ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={brand.logoUrl}
               alt={brand.logoAlt || brand.name}
-              className="h-8 w-auto max-h-8 object-contain sm:h-10 sm:max-h-10"
+              onError={() => setFailedLogoKey(logoKey)}
+              className="h-auto max-h-10 w-auto max-w-[96px] object-contain sm:max-h-12 sm:max-w-[120px]"
             />
           ) : (
             brand.name

@@ -214,7 +214,7 @@ export default function AdminGalleryEditor() {
         <code className="text-xs">sites/{SITE_ID}/gallery/</code> and metadata
         saves to Firestore at{" "}
         <code className="text-xs">sites/{SITE_ID}/gallery/{"{galleryItemId}"}</code>.
-        The public homepage still uses fallback content until connected.
+        Visible gallery images appear on the public homepage.
       </div>
 
       {errorMessage && (

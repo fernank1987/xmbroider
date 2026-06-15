@@ -52,6 +52,33 @@ export type UpdateGalleryItemInput = Partial<
   Pick<GalleryItem, "title" | "category" | "imageUrl" | "storagePath" | "isVisible" | "sortOrder">
 >;
 
+export type PublicGalleryItem = {
+  id: string;
+  title: string;
+  category: string;
+  imageUrl: string;
+};
+
+function sortPublicGalleryItems(items: GalleryItem[]): PublicGalleryItem[] {
+  return items
+    .filter((item) => item.isVisible !== false)
+    .sort((a, b) => {
+      if (a.sortOrder !== b.sortOrder) {
+        return a.sortOrder - b.sortOrder;
+      }
+
+      const aCreated = a.createdAt ? Date.parse(a.createdAt) : 0;
+      const bCreated = b.createdAt ? Date.parse(b.createdAt) : 0;
+      return bCreated - aCreated;
+    })
+    .map(({ id, title, category, imageUrl }) => ({
+      id,
+      title,
+      category,
+      imageUrl,
+    }));
+}
+
 function getGalleryCollectionRef(siteId: string) {
   if (!db) {
     throw new Error(FIREBASE_DISABLED_MESSAGE);
@@ -143,6 +170,25 @@ export async function listGalleryItems(siteId: string): Promise<GalleryItem[]> {
     return snapshot.docs
       .map((itemDoc) => parseGalleryItem(itemDoc.id, itemDoc.data()))
       .filter((item): item is GalleryItem => item !== null);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Lists visible gallery items for the public homepage.
+ * Returns an empty array when Firebase is unavailable or the query fails.
+ */
+export async function listPublicGalleryItems(
+  siteId: string,
+): Promise<PublicGalleryItem[]> {
+  if (!isFirebaseConfigured || !db) {
+    return [];
+  }
+
+  try {
+    const items = await listGalleryItems(siteId);
+    return sortPublicGalleryItems(items);
   } catch {
     return [];
   }
