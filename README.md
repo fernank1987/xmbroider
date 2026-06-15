@@ -22,10 +22,15 @@ Firestore structure:
 
 - `sites/{siteId}` — parent site summary (`siteId`, `businessName`, `tagline`, timestamps)
 - `sites/{siteId}/content/main` — editable brand, hero, and SEO content
+- `sites/{siteId}/gallery/{galleryItemId}` — gallery metadata (`title`, `category`, `imageUrl`, `storagePath`, `isVisible`, `sortOrder`, timestamps)
 
-Example for this project: `sites/xmbroider` and `sites/xmbroider/content/main`.
+Storage structure:
 
-Other Firebase repositories in `src/lib/firebase/` (gallery uploads, quote requests) are placeholders until connected.
+- `sites/{siteId}/gallery/{generatedFileName}` — uploaded gallery image files
+
+Example for this project: `sites/xmbroider`, `sites/xmbroider/content/main`, and `sites/xmbroider/gallery/{galleryItemId}`.
+
+Other Firebase repositories in `src/lib/firebase/` (quote requests) are placeholders until connected.
 
 ## Firebase setup (optional)
 
@@ -54,10 +59,55 @@ Client initialization: `src/lib/firebase/client.ts`
 Repositories:
 
 - `src/lib/firebase/siteContentRepository.ts` — editable site content (connected)
-- `src/lib/firebase/storageRepository.ts` — gallery image uploads (placeholder)
+- `src/lib/firebase/galleryRepository.ts` — gallery metadata (connected)
+- `src/lib/firebase/storageRepository.ts` — gallery image uploads (connected)
 - `src/lib/firebase/quoteRepository.ts` — quote form submissions (placeholder)
 
 If env vars are missing, Firebase exports are `null` and the app continues using `siteContent.ts`.
+
+## Firebase security rules (recommended)
+
+Adjust these for your project and admin allowlist strategy. Examples below assume authenticated admin users can write, while public read access is allowed for future homepage integration.
+
+Firestore:
+
+```txt
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /sites/{siteId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+
+      match /content/{docId} {
+        allow read: if true;
+        allow write: if request.auth != null;
+      }
+
+      match /gallery/{galleryItemId} {
+        allow read: if true;
+        allow write: if request.auth != null;
+      }
+    }
+  }
+}
+```
+
+Storage:
+
+```txt
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /sites/{siteId}/gallery/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+  }
+}
+```
+
+Tighten `allow write` later to match your admin email allowlist once you move checks into security rules.
 
 ## Scripts
 
