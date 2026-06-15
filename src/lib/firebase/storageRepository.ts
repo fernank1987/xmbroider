@@ -12,6 +12,22 @@ export type UploadGalleryImageResult = {
   fileName: string;
 };
 
+export type UploadBrandLogoResult = {
+  url: string;
+  path: string;
+  fileName: string;
+};
+
+export const BRAND_LOGO_MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+export const BRAND_LOGO_ALLOWED_CONTENT_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/svg+xml",
+] as const;
+
+export type BrandLogoContentType = (typeof BRAND_LOGO_ALLOWED_CONTENT_TYPES)[number];
+
 const FIREBASE_DISABLED_MESSAGE =
   "Firebase is not configured. Add NEXT_PUBLIC_FIREBASE_* variables to .env.local.";
 
@@ -29,10 +45,37 @@ function extensionForContentType(contentType: string): string {
       return "png";
     case "image/webp":
       return "webp";
+    case "image/svg+xml":
+      return "svg";
     case "image/jpeg":
     default:
       return "jpg";
   }
+}
+
+/**
+ * Builds the Storage path for a brand logo asset.
+ * Path: sites/{siteId}/brand/{fileName}
+ */
+export function getBrandLogoStoragePath(siteId: string, fileName: string): string {
+  return `sites/${siteId}/brand/${fileName}`;
+}
+
+export function generateBrandLogoFileName(contentType: string): string {
+  const extension = extensionForContentType(contentType);
+  return `${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${extension}`;
+}
+
+export function validateBrandLogoFile(file: File): string | null {
+  if (!BRAND_LOGO_ALLOWED_CONTENT_TYPES.includes(file.type as BrandLogoContentType)) {
+    return "Only PNG, JPG, WebP, and SVG images are allowed.";
+  }
+
+  if (file.size > BRAND_LOGO_MAX_FILE_SIZE_BYTES) {
+    return "Logo must be 5MB or smaller.";
+  }
+
+  return null;
 }
 
 export function generateGalleryFileName(contentType: string): string {
@@ -67,6 +110,45 @@ export async function uploadGalleryImage(
  * Deletes a gallery image from Firebase Storage.
  */
 export async function deleteGalleryImage(storagePath: string): Promise<void> {
+  if (!isFirebaseConfigured || !storage) {
+    throw new Error(FIREBASE_DISABLED_MESSAGE);
+  }
+
+  await deleteObject(ref(storage, storagePath));
+}
+
+/**
+ * Uploads a brand logo to Firebase Storage.
+ * Storage path: sites/{siteId}/brand/{generatedFileName}
+ */
+export async function uploadBrandLogo(
+  siteId: string,
+  file: File,
+): Promise<UploadBrandLogoResult> {
+  if (!isFirebaseConfigured || !storage) {
+    throw new Error(FIREBASE_DISABLED_MESSAGE);
+  }
+
+  const validationError = validateBrandLogoFile(file);
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
+  const contentType = file.type;
+  const fileName = generateBrandLogoFileName(contentType);
+  const path = getBrandLogoStoragePath(siteId, fileName);
+  const storageRef = ref(storage, path);
+
+  await uploadBytes(storageRef, file, { contentType });
+  const url = await getDownloadURL(storageRef);
+
+  return { url, path, fileName };
+}
+
+/**
+ * Deletes a brand logo from Firebase Storage.
+ */
+export async function deleteBrandLogo(storagePath: string): Promise<void> {
   if (!isFirebaseConfigured || !storage) {
     throw new Error(FIREBASE_DISABLED_MESSAGE);
   }

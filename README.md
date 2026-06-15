@@ -14,19 +14,20 @@ npm run dev
 
 ## Content
 
-Editable website copy lives in `src/lib/siteContent.ts` as the fallback source of truth. The public homepage still reads from this file.
+Editable website copy lives in `src/lib/siteContent.ts` as the fallback source of truth.
 
-Admin site content can be saved to Firestore from `/admin/site`.
+The public homepage loads editable content from Firestore at `sites/{siteId}/content/main` when available, then merges it with the local fallback. If Firebase is unavailable or the document is missing, the site continues using `siteContent.ts`.
 
 Firestore structure:
 
 - `sites/{siteId}` — parent site summary (`siteId`, `businessName`, `tagline`, timestamps)
-- `sites/{siteId}/content/main` — editable brand, hero, and SEO content
+- `sites/{siteId}/content/main` — editable brand, hero, and SEO content (brand may include `logoUrl`, `logoStoragePath`, and `logoAlt`)
 - `sites/{siteId}/gallery/{galleryItemId}` — gallery metadata (`title`, `category`, `imageUrl`, `storagePath`, `isVisible`, `sortOrder`, timestamps)
 
 Storage structure:
 
 - `sites/{siteId}/gallery/{generatedFileName}` — uploaded gallery image files
+- `sites/{siteId}/brand/{generatedFileName}` — uploaded brand logo files (PNG, JPG, WebP, or SVG; max 5MB)
 
 Example for this project: `sites/xmbroider`, `sites/xmbroider/content/main`, and `sites/xmbroider/gallery/{galleryItemId}`.
 
@@ -58,9 +59,9 @@ Client initialization: `src/lib/firebase/client.ts`
 
 Repositories:
 
-- `src/lib/firebase/siteContentRepository.ts` — editable site content (connected)
+- `src/lib/firebase/siteContentRepository.ts` — editable site content and brand logo metadata (connected)
 - `src/lib/firebase/galleryRepository.ts` — gallery metadata (connected)
-- `src/lib/firebase/storageRepository.ts` — gallery image uploads (connected)
+- `src/lib/firebase/storageRepository.ts` — gallery and brand logo uploads (connected)
 - `src/lib/firebase/quoteRepository.ts` — quote form submissions (placeholder)
 
 If env vars are missing, Firebase exports are `null` and the app continues using `siteContent.ts`.
@@ -100,6 +101,11 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     match /sites/{siteId}/gallery/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    match /sites/{siteId}/brand/{fileName} {
       allow read: if true;
       allow write: if request.auth != null;
     }

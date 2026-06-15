@@ -5,6 +5,7 @@ import {
   setDoc,
   type DocumentData,
 } from "firebase/firestore";
+import { unstable_noStore as noStore } from "next/cache";
 import {
   getFallbackEditableContent,
   getSiteContent,
@@ -72,8 +73,30 @@ function parseEditableSiteContent(data: DocumentData): EditableSiteContent | nul
     return null;
   }
 
+  const parsedBrand: EditableSiteContent["brand"] = {
+    name,
+    tagline,
+    phone,
+    email,
+    location,
+  };
+
+  const logoUrl = readString(brand.logoUrl);
+  const logoStoragePath = readString(brand.logoStoragePath);
+  const logoAlt = readString(brand.logoAlt);
+
+  if (logoUrl) {
+    parsedBrand.logoUrl = logoUrl;
+  }
+  if (logoStoragePath) {
+    parsedBrand.logoStoragePath = logoStoragePath;
+  }
+  if (logoAlt !== null) {
+    parsedBrand.logoAlt = logoAlt;
+  }
+
   return {
-    brand: { name, tagline, phone, email, location },
+    brand: parsedBrand,
     hero: { title: heroTitle, subtitle: heroSubtitle },
     seo: { title: seoTitle, description: seoDescription },
   };
@@ -121,6 +144,22 @@ export async function getSiteContentFromFirestore(
   } catch {
     return null;
   }
+}
+
+/**
+ * Loads public homepage content from Firestore when available, otherwise fallback.
+ *
+ * Reads sites/{siteId}/content/main using the fallback siteId, merges editable
+ * Firestore fields into local siteContent, and always returns usable content.
+ */
+export async function loadPublicSiteContent(
+  siteId: string = siteContent.siteId,
+): Promise<SiteContent> {
+  noStore();
+
+  const fallback = getSiteContent(siteId);
+  const firestoreContent = await getSiteContentFromFirestore(siteId);
+  return firestoreContent ?? fallback;
 }
 
 /** Loads only the editable Firestore fields, or null when missing/invalid. */

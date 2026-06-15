@@ -2,10 +2,8 @@ import Image from "next/image";
 import Footer from "./components/Footer";
 import Header from "./components/Header";
 import QuoteForm from "./components/QuoteForm";
+import { loadPublicSiteContent } from "@/lib/firebase/siteContentRepository";
 import { getServiceIconPath } from "@/lib/serviceIcons";
-import { siteContent } from "@/lib/siteContent";
-
-const content = siteContent;
 
 function GalleryPlaceholderIcon() {
   return (
@@ -26,7 +24,8 @@ function GalleryPlaceholderIcon() {
   );
 }
 
-export default function Home() {
+export default async function Home() {
+  const content = await loadPublicSiteContent();
   const {
     hero,
     servicesSection,

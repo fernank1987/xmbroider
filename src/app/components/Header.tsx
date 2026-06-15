@@ -17,9 +17,18 @@ export default function Header({ content }: HeaderProps) {
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
         <Link
           href="/"
-          className="text-lg font-bold tracking-tight text-foreground sm:text-xl"
+          className="inline-flex shrink-0 items-center text-lg font-bold tracking-tight text-foreground sm:text-xl"
         >
-          {brand.name}
+          {brand.logoUrl ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={brand.logoUrl}
+              alt={brand.logoAlt || brand.name}
+              className="h-8 w-auto max-h-8 object-contain sm:h-10 sm:max-h-10"
+            />
+          ) : (
+            brand.name
+          )}
         </Link>
 
         <nav

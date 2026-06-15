@@ -52,6 +52,9 @@ export type SiteBrand = {
   phone: string;
   email: string;
   location: string;
+  logoUrl?: string;
+  logoStoragePath?: string;
+  logoAlt?: string;
 };
 
 export type SiteSeo = {
