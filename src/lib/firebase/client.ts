@@ -3,6 +3,25 @@ import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 
+export const REQUIRED_FIREBASE_ENV_KEYS = [
+  "NEXT_PUBLIC_FIREBASE_API_KEY",
+  "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
+  "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
+  "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET",
+  "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
+  "NEXT_PUBLIC_FIREBASE_APP_ID",
+] as const;
+
+export type RequiredFirebaseEnvKey = (typeof REQUIRED_FIREBASE_ENV_KEYS)[number];
+
+export type FirebaseConfigStatus = {
+  isConfigured: boolean;
+  keys: Record<RequiredFirebaseEnvKey, boolean>;
+  missingKeys: RequiredFirebaseEnvKey[];
+  /** Optional — not required for Firebase client initialization */
+  hasMeasurementId: boolean;
+};
+
 export type FirebasePublicConfig = {
   apiKey: string;
   authDomain: string;
@@ -10,40 +29,66 @@ export type FirebasePublicConfig = {
   storageBucket: string;
   messagingSenderId: string;
   appId: string;
+  measurementId?: string;
 };
 
-function readEnv(name: string): string | undefined {
-  const value = process.env[name]?.trim();
-  return value ? value : undefined;
+function isEnvPresent(value: string | undefined): boolean {
+  return Boolean(value?.trim());
+}
+
+/** Boolean-only diagnostics for required Firebase env keys. Never exposes values. */
+export function getFirebaseConfigStatus(): FirebaseConfigStatus {
+  const keys: Record<RequiredFirebaseEnvKey, boolean> = {
+    NEXT_PUBLIC_FIREBASE_API_KEY: isEnvPresent(
+      process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+    ),
+    NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: isEnvPresent(
+      process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    ),
+    NEXT_PUBLIC_FIREBASE_PROJECT_ID: isEnvPresent(
+      process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+    ),
+    NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: isEnvPresent(
+      process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    ),
+    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: isEnvPresent(
+      process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    ),
+    NEXT_PUBLIC_FIREBASE_APP_ID: isEnvPresent(
+      process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+    ),
+  };
+
+  const missingKeys = REQUIRED_FIREBASE_ENV_KEYS.filter((key) => !keys[key]);
+
+  return {
+    isConfigured: missingKeys.length === 0,
+    keys,
+    missingKeys,
+    hasMeasurementId: isEnvPresent(
+      process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
+    ),
+  };
 }
 
 /** Reads Firebase web config from NEXT_PUBLIC_* env vars. Returns null when incomplete. */
 export function getFirebasePublicConfig(): FirebasePublicConfig | null {
-  const apiKey = readEnv("NEXT_PUBLIC_FIREBASE_API_KEY");
-  const authDomain = readEnv("NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN");
-  const projectId = readEnv("NEXT_PUBLIC_FIREBASE_PROJECT_ID");
-  const storageBucket = readEnv("NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET");
-  const messagingSenderId = readEnv("NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID");
-  const appId = readEnv("NEXT_PUBLIC_FIREBASE_APP_ID");
-
-  if (
-    !apiKey ||
-    !authDomain ||
-    !projectId ||
-    !storageBucket ||
-    !messagingSenderId ||
-    !appId
-  ) {
+  const status = getFirebaseConfigStatus();
+  if (!status.isConfigured) {
     return null;
   }
 
+  const measurementId = process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID?.trim();
+
   return {
-    apiKey,
-    authDomain,
-    projectId,
-    storageBucket,
-    messagingSenderId,
-    appId,
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!.trim(),
+    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!.trim(),
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!.trim(),
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET!.trim(),
+    messagingSenderId:
+      process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID!.trim(),
+    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID!.trim(),
+    ...(measurementId ? { measurementId } : {}),
   };
 }
 
@@ -82,7 +127,10 @@ function createFirebaseClientState(): FirebaseClientState {
 const firebaseClient = createFirebaseClientState();
 
 /** True when all required NEXT_PUBLIC_FIREBASE_* env vars are present. */
-export const isFirebaseConfigured = firebaseClient.isConfigured;
+export const isFirebaseConfigured = getFirebaseConfigStatus().isConfigured;
+
+/** Boolean-only Firebase env diagnostics. Never exposes secret values. */
+export const firebaseConfigStatus = getFirebaseConfigStatus();
 
 /** Initialized Firebase app, or null when env vars are missing. */
 export const firebaseApp = firebaseClient.app;

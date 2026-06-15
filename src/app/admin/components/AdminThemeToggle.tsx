@@ -4,16 +4,17 @@ import { useAdminTheme } from "./AdminThemeProvider";
 import { adminThemeToggle } from "../lib/adminStyles";
 
 export default function AdminThemeToggle() {
-  const { theme, toggleTheme } = useAdminTheme();
+  const { theme, toggleTheme, mounted } = useAdminTheme();
+  const displayTheme = mounted ? theme : "light";
 
   return (
     <button
       type="button"
       onClick={toggleTheme}
       className={adminThemeToggle}
-      aria-label={`Switch to ${theme === "light" ? "dark" : "light"} theme`}
+      aria-label={`Switch to ${displayTheme === "light" ? "dark" : "light"} theme`}
     >
-      {theme === "light" ? (
+      {displayTheme === "light" ? (
         <svg
           className="h-4 w-4"
           fill="none"
@@ -44,7 +45,7 @@ export default function AdminThemeToggle() {
           />
         </svg>
       )}
-      <span>{theme === "light" ? "Dark mode" : "Light mode"}</span>
+      <span>{displayTheme === "light" ? "Dark mode" : "Light mode"}</span>
     </button>
   );
 }

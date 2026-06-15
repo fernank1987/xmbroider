@@ -1,5 +1,5 @@
-import AdminHeader from "./components/AdminHeader";
-import AdminStatCard from "./components/AdminStatCard";
+import AdminHeader from "../components/AdminHeader";
+import AdminStatCard from "../components/AdminStatCard";
 import {
   adminAccentLink,
   adminCard,
@@ -8,7 +8,7 @@ import {
   adminCardValue,
   adminNotice,
   adminSectionTitle,
-} from "./lib/adminStyles";
+} from "../lib/adminStyles";
 import { siteContent } from "@/lib/siteContent";
 
 const PLACEHOLDER_QUOTE_COUNT = 0;

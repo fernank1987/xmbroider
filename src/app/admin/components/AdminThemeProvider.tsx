@@ -8,48 +8,27 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import AdminSidebar from "./AdminSidebar";
+import { useAdminHydrated } from "../lib/adminHydration";
 import {
-  ADMIN_THEME_STORAGE_KEY,
-  getStoredAdminTheme,
-  isAdminTheme,
-  type AdminTheme,
-} from "../lib/theme";
-import { adminShell } from "../lib/adminStyles";
+  getAdminThemeServerSnapshot,
+  getAdminThemeSnapshot,
+  persistAdminTheme,
+  subscribeAdminTheme,
+  toggleAdminTheme,
+} from "../lib/adminThemeStore";
+import { type AdminTheme } from "../lib/theme";
 
 type AdminThemeContextValue = {
   theme: AdminTheme;
   setTheme: (theme: AdminTheme) => void;
   toggleTheme: () => void;
+  mounted: boolean;
 };
 
 const AdminThemeContext = createContext<AdminThemeContextValue | null>(null);
 
-const themeListeners = new Set<() => void>();
-
-function subscribeToTheme(listener: () => void) {
-  themeListeners.add(listener);
-  return () => {
-    themeListeners.delete(listener);
-  };
-}
-
-function getThemeSnapshot(): AdminTheme {
-  return getStoredAdminTheme();
-}
-
-function getThemeServerSnapshot(): AdminTheme {
-  return "light";
-}
-
-function notifyThemeListeners() {
-  themeListeners.forEach((listener) => listener());
-}
-
-function persistTheme(theme: AdminTheme) {
-  localStorage.setItem(ADMIN_THEME_STORAGE_KEY, theme);
-  notifyThemeListeners();
-}
+const adminShellLight =
+  "min-h-screen bg-slate-50 text-slate-900 admin-dark:bg-zinc-950 admin-dark:text-zinc-100";
 
 export function useAdminTheme(): AdminThemeContextValue {
   const context = useContext(AdminThemeContext);
@@ -64,39 +43,35 @@ export default function AdminThemeProvider({
 }: {
   children: ReactNode;
 }) {
+  const hydrated = useAdminHydrated();
   const theme = useSyncExternalStore(
-    subscribeToTheme,
-    getThemeSnapshot,
-    getThemeServerSnapshot,
+    subscribeAdminTheme,
+    getAdminThemeSnapshot,
+    getAdminThemeServerSnapshot,
   );
 
   const setTheme = useCallback((nextTheme: AdminTheme) => {
-    if (!isAdminTheme(nextTheme)) {
-      return;
-    }
-    persistTheme(nextTheme);
+    persistAdminTheme(nextTheme);
   }, []);
 
   const toggleTheme = useCallback(() => {
-    persistTheme(theme === "light" ? "dark" : "light");
-  }, [theme]);
+    toggleAdminTheme();
+  }, []);
 
   const value = useMemo(
-    () => ({ theme, setTheme, toggleTheme }),
-    [theme, setTheme, toggleTheme],
+    () => ({ theme, setTheme, toggleTheme, mounted: hydrated }),
+    [theme, setTheme, toggleTheme, hydrated],
   );
+
+  const isDark = hydrated && theme === "dark";
 
   return (
     <AdminThemeContext.Provider value={value}>
       <div
-        className={`${adminShell} ${theme === "dark" ? "admin-dark" : ""}`}
-        data-admin-theme={theme}
-        suppressHydrationWarning
+        className={`${adminShellLight} ${isDark ? "admin-dark" : ""}`}
+        data-admin-theme={hydrated ? theme : "light"}
       >
-        <div className="flex min-h-screen flex-col lg:flex-row">
-          <AdminSidebar />
-          <div className="flex min-w-0 flex-1 flex-col">{children}</div>
-        </div>
+        {children}
       </div>
     </AdminThemeContext.Provider>
   );

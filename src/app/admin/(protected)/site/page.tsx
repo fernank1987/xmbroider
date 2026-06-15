@@ -1,6 +1,6 @@
 "use client";
 
-import AdminHeader from "../components/AdminHeader";
+import AdminHeader from "../../components/AdminHeader";
 import {
   adminButtonDisabled,
   adminCard,
@@ -8,7 +8,7 @@ import {
   adminLabel,
   adminNotice,
   adminSectionTitle,
-} from "../lib/adminStyles";
+} from "../../lib/adminStyles";
 import { siteContent } from "@/lib/siteContent";
 
 export default function AdminSiteContentPage() {

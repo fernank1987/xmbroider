@@ -1,4 +1,4 @@
-import AdminHeader from "../components/AdminHeader";
+import AdminHeader from "../../components/AdminHeader";
 import {
   adminBodyText,
   adminButtonOutlineDisabled,
@@ -13,7 +13,7 @@ import {
   adminUploadIcon,
   adminUploadIconWrap,
   adminUploadZone,
-} from "../lib/adminStyles";
+} from "../../lib/adminStyles";
 import { siteContent } from "@/lib/siteContent";
 
 export default function AdminGalleryPage() {

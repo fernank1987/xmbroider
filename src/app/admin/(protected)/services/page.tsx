@@ -1,4 +1,4 @@
-import AdminHeader from "../components/AdminHeader";
+import AdminHeader from "../../components/AdminHeader";
 import {
   adminBodyText,
   adminButtonSmallDisabled,
@@ -11,7 +11,7 @@ import {
   adminTableHead,
   adminTableHeadCell,
   adminTableWrap,
-} from "../lib/adminStyles";
+} from "../../lib/adminStyles";
 import { siteContent } from "@/lib/siteContent";
 
 export default function AdminServicesPage() {

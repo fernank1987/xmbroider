@@ -1,11 +1,11 @@
-import AdminHeader from "../components/AdminHeader";
+import AdminHeader from "../../components/AdminHeader";
 import {
   adminBodyText,
   adminCard,
   adminEmptyIcon,
   adminEmptyIconWrap,
   adminEmptyTitle,
-} from "../lib/adminStyles";
+} from "../../lib/adminStyles";
 
 export default function AdminQuotesPage() {
   return (

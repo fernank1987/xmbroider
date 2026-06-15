@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import AdminLogoutButton from "./AdminAuthActions";
+import { useAdminAuth } from "./AdminAuthProvider";
 import {
+  adminBodyText,
   adminBrandSubtitle,
   adminBrandTitle,
   adminNavLink,
@@ -27,6 +30,7 @@ function isActive(pathname: string, href: string, exact?: boolean) {
 
 export default function AdminSidebar() {
   const pathname = usePathname();
+  const { user } = useAdminAuth();
 
   return (
     <aside className={adminSidebar}>
@@ -59,10 +63,18 @@ export default function AdminSidebar() {
         })}
       </nav>
 
-      <div className="mt-auto hidden border-t border-slate-200 px-6 py-4 admin-dark:border-zinc-800 lg:block">
-        <Link href="/" className={adminSubtleLink}>
-          ← Back to public site
-        </Link>
+      <div className="mt-auto border-t border-slate-200 px-4 py-4 admin-dark:border-zinc-800 lg:px-6">
+        {user?.email && (
+          <p className={`mb-3 truncate text-xs lg:text-sm ${adminBodyText}`}>
+            {user.email}
+          </p>
+        )}
+        <div className="flex flex-col gap-3">
+          <AdminLogoutButton className="w-full justify-center lg:hidden" />
+          <Link href="/" className={adminSubtleLink}>
+            ← Back to public site
+          </Link>
+        </div>
       </div>
     </aside>
   );
