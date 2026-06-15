@@ -14,9 +14,18 @@ npm run dev
 
 ## Content
 
-Editable website copy lives in `src/lib/siteContent.ts` as local mock data. The public homepage and admin dashboard read from this file today.
+Editable website copy lives in `src/lib/siteContent.ts` as the fallback source of truth. The public homepage still reads from this file.
 
-Firebase repository placeholders are in `src/lib/firebase/` for future Firestore, Storage, and quote request integration. Nothing is saved to Firebase yet.
+Admin site content can be saved to Firestore from `/admin/site`.
+
+Firestore structure:
+
+- `sites/{siteId}` — parent site summary (`siteId`, `businessName`, `tagline`, timestamps)
+- `sites/{siteId}/content/main` — editable brand, hero, and SEO content
+
+Example for this project: `sites/xmbroider` and `sites/xmbroider/content/main`.
+
+Other Firebase repositories in `src/lib/firebase/` (gallery uploads, quote requests) are placeholders until connected.
 
 ## Firebase setup (optional)
 
@@ -42,11 +51,11 @@ Required variables:
 
 Client initialization: `src/lib/firebase/client.ts`
 
-Planned repositories:
+Repositories:
 
-- `src/lib/firebase/siteContentRepository.ts` — editable site content
-- `src/lib/firebase/storageRepository.ts` — gallery image uploads
-- `src/lib/firebase/quoteRepository.ts` — quote form submissions
+- `src/lib/firebase/siteContentRepository.ts` — editable site content (connected)
+- `src/lib/firebase/storageRepository.ts` — gallery image uploads (placeholder)
+- `src/lib/firebase/quoteRepository.ts` — quote form submissions (placeholder)
 
 If env vars are missing, Firebase exports are `null` and the app continues using `siteContent.ts`.
 

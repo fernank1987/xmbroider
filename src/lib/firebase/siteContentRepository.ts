@@ -17,6 +17,13 @@ import { db, isFirebaseConfigured } from "./client";
 const FIREBASE_DISABLED_MESSAGE =
   "Firebase is not configured. Add NEXT_PUBLIC_FIREBASE_* variables to .env.local.";
 
+function getSiteDocRef(siteId: string) {
+  if (!db) {
+    throw new Error(FIREBASE_DISABLED_MESSAGE);
+  }
+  return doc(db, "sites", siteId);
+}
+
 function getSiteContentDocRef(siteId: string) {
   if (!db) {
     throw new Error(FIREBASE_DISABLED_MESSAGE);
@@ -137,7 +144,10 @@ export async function getEditableSiteContentFromFirestore(
 }
 
 /**
- * Persists editable site content to Firestore at sites/{siteId}/content/main.
+ * Persists editable site content to Firestore.
+ *
+ * - Parent site summary: sites/{siteId}
+ * - Editable content: sites/{siteId}/content/main
  */
 export async function saveSiteContentToFirestore(
   siteId: string,
@@ -147,21 +157,42 @@ export async function saveSiteContentToFirestore(
     throw new Error(FIREBASE_DISABLED_MESSAGE);
   }
 
-  const docRef = getSiteContentDocRef(siteId);
-  const existing = await getDoc(docRef);
+  const contentRef = getSiteContentDocRef(siteId);
+  const siteRef = getSiteDocRef(siteId);
 
-  await setDoc(
-    docRef,
-    {
-      siteId,
-      brand: content.brand,
-      hero: content.hero,
-      seo: content.seo,
-      updatedAt: serverTimestamp(),
-      ...(existing.exists() ? {} : { createdAt: serverTimestamp() }),
-    },
-    { merge: true },
-  );
+  const [existingContent, existingSite] = await Promise.all([
+    getDoc(contentRef),
+    getDoc(siteRef),
+  ]);
+
+  const isFirstContentSave = !existingContent.exists();
+  const isFirstSiteSave = !existingSite.exists();
+
+  await Promise.all([
+    setDoc(
+      contentRef,
+      {
+        siteId,
+        brand: content.brand,
+        hero: content.hero,
+        seo: content.seo,
+        updatedAt: serverTimestamp(),
+        ...(isFirstContentSave ? { createdAt: serverTimestamp() } : {}),
+      },
+      { merge: true },
+    ),
+    setDoc(
+      siteRef,
+      {
+        siteId,
+        businessName: content.brand.name,
+        tagline: content.brand.tagline,
+        updatedAt: serverTimestamp(),
+        ...(isFirstSiteSave ? { createdAt: serverTimestamp() } : {}),
+      },
+      { merge: true },
+    ),
+  ]);
 }
 
 export function getFallbackEditableSiteContent(
