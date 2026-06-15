@@ -1,0 +1,1 @@
+@custom-variant admin-dark (&:where(.admin-dark, .admin-dark *));

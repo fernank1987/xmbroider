@@ -1,4 +1,19 @@
 import AdminHeader from "../components/AdminHeader";
+import {
+  adminBodyText,
+  adminButtonOutlineDisabled,
+  adminCard,
+  adminCardValue,
+  adminGalleryThumb,
+  adminGalleryThumbIcon,
+  adminInputDisabled,
+  adminLabel,
+  adminNotice,
+  adminSectionTitle,
+  adminUploadIcon,
+  adminUploadIconWrap,
+  adminUploadZone,
+} from "../lib/adminStyles";
 import { siteContent } from "@/lib/siteContent";
 
 export default function AdminGalleryPage() {
@@ -12,15 +27,15 @@ export default function AdminGalleryPage() {
       />
 
       <div className="flex-1 space-y-8 p-6 lg:p-8">
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+        <div className={adminNotice}>
           Image uploads will connect to Firebase Storage later. Upload controls
           below are placeholders only.
         </div>
 
-        <section className="rounded-xl border border-dashed border-zinc-700 bg-zinc-900/50 p-8 text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-zinc-800">
+        <section className={adminUploadZone}>
+          <div className={adminUploadIconWrap}>
             <svg
-              className="h-8 w-8 text-zinc-500"
+              className={adminUploadIcon}
               fill="none"
               viewBox="0 0 24 24"
               strokeWidth={1.5}
@@ -34,31 +49,22 @@ export default function AdminGalleryPage() {
               />
             </svg>
           </div>
-          <p className="mt-4 text-sm font-medium text-zinc-300">
+          <p className={`mt-4 text-sm font-medium ${adminSectionTitle}`}>
             Upload gallery image
           </p>
-          <p className="mt-1 text-xs text-zinc-500">
+          <p className={`mt-1 text-xs ${adminBodyText}`}>
             PNG or JPG — drag and drop coming soon
           </p>
-          <button
-            type="button"
-            disabled
-            className="mt-4 cursor-not-allowed rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-500"
-          >
+          <button type="button" disabled className={`mt-4 ${adminButtonOutlineDisabled}`}>
             Choose file (coming soon)
           </button>
         </section>
 
-        <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-6">
-          <h2 className="text-base font-semibold text-white">
-            Add gallery item (preview)
-          </h2>
+        <section className={`${adminCard} p-6`}>
+          <h2 className={adminSectionTitle}>Add gallery item (preview)</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <div>
-              <label
-                htmlFor="gallery-title"
-                className="block text-sm font-medium text-zinc-300"
-              >
+              <label htmlFor="gallery-title" className={adminLabel}>
                 Title
               </label>
               <input
@@ -66,14 +72,11 @@ export default function AdminGalleryPage() {
                 type="text"
                 placeholder="Embroidered Polo"
                 disabled
-                className="mt-1 w-full cursor-not-allowed rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-500"
+                className={adminInputDisabled}
               />
             </div>
             <div>
-              <label
-                htmlFor="gallery-category"
-                className="block text-sm font-medium text-zinc-300"
-              >
+              <label htmlFor="gallery-category" className={adminLabel}>
                 Category
               </label>
               <input
@@ -81,28 +84,25 @@ export default function AdminGalleryPage() {
                 type="text"
                 placeholder="Embroidery"
                 disabled
-                className="mt-1 w-full cursor-not-allowed rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-500"
+                className={adminInputDisabled}
               />
             </div>
           </div>
         </section>
 
         <section>
-          <h2 className="mb-4 text-base font-semibold text-white">
+          <h2 className={`mb-4 ${adminSectionTitle}`}>
             Current gallery items ({gallery.items.length})
           </h2>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {gallery.items.map((item) => (
-              <article
-                key={item.id}
-                className="rounded-xl border border-zinc-800 bg-zinc-900 p-4"
-              >
-                <div className="flex aspect-[4/3] items-center justify-center rounded-lg bg-zinc-800">
+              <article key={item.id} className={`${adminCard} p-4`}>
+                <div className={adminGalleryThumb}>
                   {item.imageUrl ? (
-                    <span className="text-xs text-zinc-400">Image set</span>
+                    <span className={`text-xs ${adminBodyText}`}>Image set</span>
                   ) : (
                     <svg
-                      className="h-10 w-10 text-zinc-600"
+                      className={adminGalleryThumbIcon}
                       fill="none"
                       viewBox="0 0 24 24"
                       strokeWidth={1}
@@ -117,15 +117,15 @@ export default function AdminGalleryPage() {
                     </svg>
                   )}
                 </div>
-                <h3 className="mt-3 text-sm font-medium text-white">
+                <h3 className={`mt-3 text-sm font-medium ${adminCardValue}`}>
                   {item.label}
                 </h3>
-                <p className="text-xs text-zinc-500">{item.category}</p>
-                <p className="mt-1 font-mono text-xs text-zinc-600">
+                <p className={`text-xs ${adminBodyText}`}>{item.category}</p>
+                <p className={`mt-1 font-mono text-xs text-slate-400 admin-dark:text-zinc-600`}>
                   {item.id}
                 </p>
                 {item.imageUrl && (
-                  <p className="mt-1 truncate text-xs text-zinc-500">
+                  <p className={`mt-1 truncate text-xs ${adminBodyText}`}>
                     {item.imageUrl}
                   </p>
                 )}

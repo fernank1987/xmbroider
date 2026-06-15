@@ -2,6 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  adminBrandSubtitle,
+  adminBrandTitle,
+  adminNavLink,
+  adminNavLinkActive,
+  adminNavLinkInactive,
+  adminSidebar,
+  adminSubtleLink,
+} from "../lib/adminStyles";
 
 const navItems = [
   { href: "/admin", label: "Dashboard", exact: true },
@@ -20,18 +29,15 @@ export default function AdminSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="flex w-full flex-col border-b border-zinc-800 bg-zinc-950 lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r">
+    <aside className={adminSidebar}>
       <div className="flex items-center justify-between px-4 py-5 lg:px-6">
         <div>
-          <Link href="/admin" className="text-lg font-semibold text-white">
+          <Link href="/admin" className={adminBrandTitle}>
             XMBroider Admin
           </Link>
-          <p className="mt-0.5 text-xs text-zinc-500">Content management</p>
+          <p className={adminBrandSubtitle}>Content management</p>
         </div>
-        <Link
-          href="/"
-          className="text-xs font-medium text-zinc-400 transition-colors hover:text-white lg:hidden"
-        >
+        <Link href="/" className={`text-xs font-medium lg:hidden ${adminSubtleLink}`}>
           View site
         </Link>
       </div>
@@ -43,10 +49,8 @@ export default function AdminSidebar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition-colors lg:px-3 lg:py-2.5 ${
-                active
-                  ? "bg-zinc-800 text-white"
-                  : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+              className={`${adminNavLink} ${
+                active ? adminNavLinkActive : adminNavLinkInactive
               }`}
             >
               {item.label}
@@ -55,11 +59,8 @@ export default function AdminSidebar() {
         })}
       </nav>
 
-      <div className="mt-auto hidden border-t border-zinc-800 px-6 py-4 lg:block">
-        <Link
-          href="/"
-          className="text-sm text-zinc-400 transition-colors hover:text-white"
-        >
+      <div className="mt-auto hidden border-t border-slate-200 px-6 py-4 admin-dark:border-zinc-800 lg:block">
+        <Link href="/" className={adminSubtleLink}>
           ← Back to public site
         </Link>
       </div>

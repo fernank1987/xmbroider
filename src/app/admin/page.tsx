@@ -1,5 +1,14 @@
 import AdminHeader from "./components/AdminHeader";
 import AdminStatCard from "./components/AdminStatCard";
+import {
+  adminAccentLink,
+  adminCard,
+  adminCardHint,
+  adminCardMutedLabel,
+  adminCardValue,
+  adminNotice,
+  adminSectionTitle,
+} from "./lib/adminStyles";
 import { siteContent } from "@/lib/siteContent";
 
 const PLACEHOLDER_QUOTE_COUNT = 0;
@@ -15,7 +24,7 @@ export default function AdminDashboardPage() {
       />
 
       <div className="flex-1 space-y-8 p-6 lg:p-8">
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+        <div className={adminNotice}>
           UI-only admin shell — changes are not saved yet. Firestore and
           authentication will be added in a later phase.
         </div>
@@ -41,38 +50,32 @@ export default function AdminDashboardPage() {
             value={PLACEHOLDER_QUOTE_COUNT}
             hint="Placeholder until quote form is connected"
           />
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-            <p className="text-sm font-medium text-zinc-400">Site ID</p>
-            <p className="mt-2 font-mono text-lg text-white">
+          <div className={`${adminCard} p-5`}>
+            <p className={adminCardMutedLabel}>Site ID</p>
+            <p className={`${adminCardValue} font-mono text-lg`}>
               {siteContent.siteId}
             </p>
-            <p className="mt-1 text-xs text-zinc-500">
+            <p className={adminCardHint}>
               Used for multi-site support when Firestore is connected
             </p>
           </div>
         </div>
 
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-          <h2 className="text-sm font-semibold text-white">Quick links</h2>
-          <ul className="mt-3 space-y-2 text-sm text-zinc-400">
+        <div className={`${adminCard} p-5`}>
+          <h2 className={adminSectionTitle}>Quick links</h2>
+          <ul className="mt-3 space-y-2 text-sm">
             <li>
-              <a href="/admin/site" className="text-amber-400 hover:text-amber-300">
+              <a href="/admin/site" className={adminAccentLink}>
                 Edit site content →
               </a>
             </li>
             <li>
-              <a
-                href="/admin/gallery"
-                className="text-amber-400 hover:text-amber-300"
-              >
+              <a href="/admin/gallery" className={adminAccentLink}>
                 Manage gallery →
               </a>
             </li>
             <li>
-              <a
-                href="/admin/services"
-                className="text-amber-400 hover:text-amber-300"
-              >
+              <a href="/admin/services" className={adminAccentLink}>
                 Manage services →
               </a>
             </li>

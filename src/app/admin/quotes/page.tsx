@@ -1,4 +1,11 @@
 import AdminHeader from "../components/AdminHeader";
+import {
+  adminBodyText,
+  adminCard,
+  adminEmptyIcon,
+  adminEmptyIconWrap,
+  adminEmptyTitle,
+} from "../lib/adminStyles";
 
 export default function AdminQuotesPage() {
   return (
@@ -9,10 +16,10 @@ export default function AdminQuotesPage() {
       />
 
       <div className="flex flex-1 items-center justify-center p-6 lg:p-8">
-        <div className="max-w-md rounded-xl border border-zinc-800 bg-zinc-900 px-8 py-12 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-zinc-800">
+        <div className={`max-w-md px-8 py-12 text-center ${adminCard}`}>
+          <div className={adminEmptyIconWrap}>
             <svg
-              className="h-7 w-7 text-zinc-500"
+              className={adminEmptyIcon}
               fill="none"
               viewBox="0 0 24 24"
               strokeWidth={1.5}
@@ -26,14 +33,12 @@ export default function AdminQuotesPage() {
               />
             </svg>
           </div>
-          <h2 className="mt-5 text-lg font-semibold text-white">
-            No quote requests yet
-          </h2>
-          <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+          <h2 className={adminEmptyTitle}>No quote requests yet</h2>
+          <p className={`mt-2 text-sm leading-relaxed ${adminBodyText}`}>
             Quote requests from the public site will appear here after the
             preview and quote form is connected to the backend.
           </p>
-          <p className="mt-4 text-xs text-zinc-500">
+          <p className={`mt-4 text-xs text-slate-500 admin-dark:text-zinc-500`}>
             Customers can currently submit the homepage form, but submissions
             are not stored yet.
           </p>

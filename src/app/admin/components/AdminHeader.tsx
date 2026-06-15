@@ -1,3 +1,6 @@
+import AdminThemeToggle from "./AdminThemeToggle";
+import { adminDescription, adminHeader, adminTitle } from "../lib/adminStyles";
+
 type AdminHeaderProps = {
   title: string;
   description?: string;
@@ -5,13 +8,14 @@ type AdminHeaderProps = {
 
 export default function AdminHeader({ title, description }: AdminHeaderProps) {
   return (
-    <header className="border-b border-zinc-800 bg-zinc-950/80 px-6 py-6 lg:px-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-white">
-        {title}
-      </h1>
-      {description && (
-        <p className="mt-1 max-w-3xl text-sm text-zinc-400">{description}</p>
-      )}
+    <header
+      className={`${adminHeader} flex items-start justify-between gap-4 px-6 py-6 lg:px-8`}
+    >
+      <div className="min-w-0">
+        <h1 className={adminTitle}>{title}</h1>
+        {description && <p className={adminDescription}>{description}</p>}
+      </div>
+      <AdminThemeToggle />
     </header>
   );
 }

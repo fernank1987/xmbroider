@@ -1,4 +1,17 @@
 import AdminHeader from "../components/AdminHeader";
+import {
+  adminBodyText,
+  adminButtonSmallDisabled,
+  adminCode,
+  adminNotice,
+  adminTableBody,
+  adminTableCellMuted,
+  adminTableCellSubtle,
+  adminTableCellTitle,
+  adminTableHead,
+  adminTableHeadCell,
+  adminTableWrap,
+} from "../lib/adminStyles";
 import { siteContent } from "@/lib/siteContent";
 
 export default function AdminServicesPage() {
@@ -12,58 +25,50 @@ export default function AdminServicesPage() {
       />
 
       <div className="flex-1 space-y-6 p-6 lg:p-8">
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+        <div className={adminNotice}>
           Service edits will be saved to Firestore later. Edit buttons are
           placeholders for now.
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-zinc-800">
+        <div className={adminTableWrap}>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-left text-sm">
-              <thead className="border-b border-zinc-800 bg-zinc-900">
+              <thead className={adminTableHead}>
                 <tr>
-                  <th className="px-4 py-3 font-medium text-zinc-400">Title</th>
-                  <th className="px-4 py-3 font-medium text-zinc-400">
-                    Description
-                  </th>
-                  <th className="px-4 py-3 font-medium text-zinc-400">
-                    iconKey
-                  </th>
-                  <th className="px-4 py-3 font-medium text-zinc-400">
-                    imageUrl
-                  </th>
-                  <th className="px-4 py-3 font-medium text-zinc-400">
-                    Actions
-                  </th>
+                  <th className={adminTableHeadCell}>Title</th>
+                  <th className={adminTableHeadCell}>Description</th>
+                  <th className={adminTableHeadCell}>iconKey</th>
+                  <th className={adminTableHeadCell}>imageUrl</th>
+                  <th className={adminTableHeadCell}>Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800 bg-zinc-950">
+              <tbody className={adminTableBody}>
                 {services.map((service) => (
                   <tr key={service.id}>
                     <td className="px-4 py-4 align-top">
-                      <p className="font-medium text-white">{service.title}</p>
-                      <p className="mt-0.5 font-mono text-xs text-zinc-600">
+                      <p className={adminTableCellTitle}>{service.title}</p>
+                      <p className={`mt-0.5 ${adminTableCellSubtle}`}>
                         {service.id}
                       </p>
                     </td>
-                    <td className="max-w-xs px-4 py-4 align-top text-zinc-400">
+                    <td className={`max-w-xs px-4 py-4 align-top ${adminTableCellMuted}`}>
                       {service.description}
                     </td>
                     <td className="px-4 py-4 align-top">
-                      <code className="rounded bg-zinc-900 px-2 py-1 text-xs text-amber-400">
-                        {service.iconKey}
-                      </code>
+                      <code className={adminCode}>{service.iconKey}</code>
                     </td>
-                    <td className="px-4 py-4 align-top text-zinc-500">
+                    <td className={`px-4 py-4 align-top ${adminBodyText}`}>
                       {service.imageUrl ?? (
-                        <span className="text-zinc-600">—</span>
+                        <span className="text-slate-400 admin-dark:text-zinc-600">
+                          —
+                        </span>
                       )}
                     </td>
                     <td className="px-4 py-4 align-top">
                       <button
                         type="button"
                         disabled
-                        className="cursor-not-allowed rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-500"
+                        className={adminButtonSmallDisabled}
                       >
                         Edit
                       </button>
