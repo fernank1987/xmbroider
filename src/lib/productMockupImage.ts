@@ -32,11 +32,26 @@ export function getVariantPhotoUrl(
   return variant.imageSrc?.trim() || null;
 }
 
-export function variantHasProductPhoto(
-  variant: ProductVariant,
-  side: MockupImageSide,
-): boolean {
-  return Boolean(getVariantPhotoUrl(variant, side));
+export function toAbsoluteAssetUrl(src: string | null | undefined): string | null {
+  if (!src?.trim()) {
+    return null;
+  }
+
+  const trimmed = src.trim();
+  if (
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("blob:") ||
+    trimmed.startsWith("data:")
+  ) {
+    return trimmed;
+  }
+
+  if (trimmed.startsWith("/") && typeof window !== "undefined") {
+    return `${window.location.origin}${trimmed}`;
+  }
+
+  return trimmed;
 }
 
 export function getVariantPhotoUrlForPlacement(

@@ -69,11 +69,15 @@ export async function loadImageElement(src: string): Promise<HTMLImageElement> {
     return loadImageFromSrc(src);
   }
 
-  try {
-    return await loadImageFromSrc(src, "anonymous");
-  } catch {
-    return loadImageViaBlobFetch(src);
+  if (src.startsWith("http://") || src.startsWith("https://")) {
+    try {
+      return await loadImageViaBlobFetch(src);
+    } catch {
+      return loadImageFromSrc(src, "anonymous");
+    }
   }
+
+  return loadImageFromSrc(src);
 }
 
 export async function loadImageWithFallback(

@@ -1,7 +1,8 @@
 import type { Placement } from "./logoPreview";
+import { loadImageElement } from "./logoPreview";
 import type { PreviewCalibration } from "./previewCalibration";
 import { garmentLocalToImageNormalized } from "./previewCalibration";
-import { loadImageElement } from "./logoPreview";
+import { APPROXIMATE_MOCKUP_WARNING, toAbsoluteAssetUrl } from "./productMockupImage";
 import type { MockupImageSide } from "./productMockupImage";
 
 export type PreviewLogoOverlay = {
@@ -17,6 +18,7 @@ export type GeneratePreviewImageResult = {
   blob: Blob | null;
   usedProductPhoto: boolean;
   approximateFallback: boolean;
+  errorMessage: string | null;
 };
 
 function drawImageContained(
@@ -92,6 +94,38 @@ function logoMatchesMockupSide(placement: Placement, side: MockupImageSide): boo
   return side === "back" ? placement === "back" : placement !== "back";
 }
 
+function fallbackDrawRect(
+  width: number,
+  height: number,
+  calibration: PreviewCalibration,
+) {
+  const bounds = calibration.garmentBounds;
+  return {
+    x: bounds.x * width,
+    y: bounds.y * height,
+    width: bounds.width * width,
+    height: bounds.height * height,
+  };
+}
+
+async function loadProductImageForExport(
+  productImageSrc: string,
+): Promise<{ image: HTMLImageElement; drawRectSource: "photo" } | { error: string }> {
+  const absoluteSrc = toAbsoluteAssetUrl(productImageSrc);
+  if (!absoluteSrc) {
+    return { error: "Product photo URL is missing." };
+  }
+
+  try {
+    const image = await loadImageElement(absoluteSrc);
+    return { image, drawRectSource: "photo" };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to load product photo for export.";
+    return { error: message };
+  }
+}
+
 export async function generatePreviewImageBlob(options: {
   productImageSrc: string | null;
   fallbackSwatchColor?: string;
@@ -99,26 +133,34 @@ export async function generatePreviewImageBlob(options: {
   baseCalibration: PreviewCalibration;
   logos: PreviewLogoOverlay[];
 }): Promise<GeneratePreviewImageResult> {
+  const width = 800;
+  const height = 600;
+
   try {
-    const width = 800;
-    const height = 600;
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
     const context = canvas.getContext("2d");
     if (!context) {
-      return { blob: null, usedProductPhoto: false, approximateFallback: false };
+      return {
+        blob: null,
+        usedProductPhoto: false,
+        approximateFallback: false,
+        errorMessage: "Canvas is unavailable in this browser.",
+      };
     }
 
     let drawRect: { x: number; y: number; width: number; height: number };
     let usedProductPhoto = false;
+    let exportError: string | null = null;
 
     if (options.productImageSrc) {
-      try {
-        const productImage = await loadImageElement(options.productImageSrc);
-        drawRect = drawImageContained(context, productImage, width, height);
+      const productLoad = await loadProductImageForExport(options.productImageSrc);
+      if ("image" in productLoad) {
+        drawRect = drawImageContained(context, productLoad.image, width, height);
         usedProductPhoto = true;
-      } catch {
+      } else {
+        exportError = productLoad.error;
         drawFallbackProductBackground(
           context,
           width,
@@ -126,13 +168,7 @@ export async function generatePreviewImageBlob(options: {
           options.fallbackSwatchColor ?? "#dbeafe",
           options.baseCalibration,
         );
-        const bounds = options.baseCalibration.garmentBounds;
-        drawRect = {
-          x: bounds.x * width,
-          y: bounds.y * height,
-          width: bounds.width * width,
-          height: bounds.height * height,
-        };
+        drawRect = fallbackDrawRect(width, height, options.baseCalibration);
       }
     } else {
       drawFallbackProductBackground(
@@ -142,13 +178,7 @@ export async function generatePreviewImageBlob(options: {
         options.fallbackSwatchColor ?? "#dbeafe",
         options.baseCalibration,
       );
-      const bounds = options.baseCalibration.garmentBounds;
-      drawRect = {
-        x: bounds.x * width,
-        y: bounds.y * height,
-        width: bounds.width * width,
-        height: bounds.height * height,
-      };
+      drawRect = fallbackDrawRect(width, height, options.baseCalibration);
     }
 
     const visibleLogos = options.logos.filter((logo) =>
@@ -156,21 +186,46 @@ export async function generatePreviewImageBlob(options: {
     );
 
     for (const overlay of visibleLogos) {
-      const artwork = await loadImageElement(overlay.artworkObjectUrl);
-      drawLogoOverlay(context, artwork, overlay, drawRect);
+      try {
+        const artworkSrc = toAbsoluteAssetUrl(overlay.artworkObjectUrl) ?? overlay.artworkObjectUrl;
+        const artwork = await loadImageElement(artworkSrc);
+        drawLogoOverlay(context, artwork, overlay, drawRect);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unable to load logo artwork for export.";
+        exportError = exportError ? `${exportError} ${message}` : message;
+      }
     }
 
     const blob = await new Promise<Blob | null>((resolve) => {
       canvas.toBlob((value) => resolve(value), "image/png");
     });
 
+    if (!blob) {
+      return {
+        blob: null,
+        usedProductPhoto,
+        approximateFallback: !usedProductPhoto,
+        errorMessage: exportError ?? "Composite preview image could not be encoded.",
+      };
+    }
+
     return {
       blob,
       usedProductPhoto,
       approximateFallback: !usedProductPhoto,
+      errorMessage: !usedProductPhoto
+        ? exportError ?? APPROXIMATE_MOCKUP_WARNING
+        : exportError,
     };
-  } catch {
-    return { blob: null, usedProductPhoto: false, approximateFallback: false };
+  } catch (error) {
+    return {
+      blob: null,
+      usedProductPhoto: false,
+      approximateFallback: false,
+      errorMessage:
+        error instanceof Error ? error.message : "Composite preview export failed.",
+    };
   }
 }
 

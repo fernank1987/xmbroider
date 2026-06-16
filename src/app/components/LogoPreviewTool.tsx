@@ -49,6 +49,7 @@ import {
   getMockupImageSideForPlacement,
   getVariantPhotoUrl,
   resolveMockupImageSide,
+  toAbsoluteAssetUrl,
   type MockupImageSide,
 } from "@/lib/productMockupImage";
 import {
@@ -102,6 +103,20 @@ const DEFAULT_VARIANT = getDefaultVariant(DEFAULT_PRODUCT);
 const MIN_VIEW_ZOOM = 0.75;
 const MAX_VIEW_ZOOM = 2.5;
 const VIEW_ZOOM_STEP = 0.15;
+
+type LogoDragState = {
+  slotIndex: number;
+  offsetX: number;
+  offsetY: number;
+};
+
+type LogoDragContext = {
+  variant: ProductVariant;
+  product: PreviewProduct;
+  viewZoom: number;
+  productImageAspect: number;
+  logoSlots: PreviewLogoSlot[];
+};
 
 function getSubmitErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {
@@ -160,6 +175,14 @@ function getSlotContainerPosition(
 
 export default function LogoPreviewTool({ siteId, initialProductId }: LogoPreviewToolProps) {
   const mockupRef = useRef<HTMLDivElement>(null);
+  const dragStateRef = useRef<LogoDragState | null>(null);
+  const dragContextRef = useRef<LogoDragContext>({
+    variant: DEFAULT_VARIANT,
+    product: DEFAULT_PRODUCT,
+    viewZoom: 1,
+    productImageAspect: 1,
+    logoSlots: createInitialLogoSlots(),
+  });
   const turnstileRef = useRef<TurnstileWidgetHandle>(null);
   const turnstileDevBypass = isTurnstileDevBypassActive();
   const submissionAvailable = isQuoteSubmissionAvailable();
@@ -180,7 +203,6 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
-  const [dragging, setDragging] = useState(false);
   const [viewZoom, setViewZoom] = useState(1);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(
     getInitialTurnstileToken(),
@@ -277,6 +299,16 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
   );
   const hasAnyArtwork = enabledSlots.some((slot) => slot.artworkFile !== null);
 
+  useEffect(() => {
+    dragContextRef.current = {
+      variant: selectedVariant,
+      product: selectedProduct,
+      viewZoom,
+      productImageAspect,
+      logoSlots,
+    };
+  }, [selectedVariant, selectedProduct, viewZoom, productImageAspect, logoSlots]);
+
   const updateSlot = (
     index: number,
     updater: (slot: PreviewLogoSlot) => PreviewLogoSlot,
@@ -284,6 +316,92 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
     setLogoSlots((current) =>
       current.map((slot, slotIndex) => (slotIndex === index ? updater(slot) : slot)),
     );
+  };
+
+  const pointerToGarmentLocal = (clientX: number, clientY: number, slotIndex: number) => {
+    const mockup = mockupRef.current;
+    if (!mockup) {
+      return null;
+    }
+
+    const { variant, product, viewZoom: zoom, productImageAspect: imageAspect, logoSlots: slots } =
+      dragContextRef.current;
+    const slot = slots[slotIndex];
+    if (!slot) {
+      return null;
+    }
+
+    const calibration = resolvePreviewCalibration(variant, product, slot.placement);
+    const rect = mockup.getBoundingClientRect();
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
+    const unscaledX = (localX - rect.width / 2) / zoom + rect.width / 2;
+    const unscaledY = (localY - rect.height / 2) / zoom + rect.height / 2;
+    const containerX = (unscaledX / rect.width) * 100;
+    const containerY = (unscaledY / rect.height) * 100;
+
+    return containerPercentToGarmentLocal(
+      containerX,
+      containerY,
+      calibration.garmentBounds,
+      MOCKUP_CONTAINER_ASPECT,
+      imageAspect,
+    );
+  };
+
+  const handleLogoPointerDown = (
+    slotIndex: number,
+    event: React.PointerEvent<HTMLImageElement>,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    setActiveSlotIndex(slotIndex);
+
+    const local = pointerToGarmentLocal(event.clientX, event.clientY, slotIndex);
+    if (!local) {
+      return;
+    }
+
+    const slot = dragContextRef.current.logoSlots[slotIndex];
+    dragStateRef.current = {
+      slotIndex,
+      offsetX: local.x - slot.positionX,
+      offsetY: local.y - slot.positionY,
+    };
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleLogoPointerMove = (
+    slotIndex: number,
+    event: React.PointerEvent<HTMLImageElement>,
+  ) => {
+    const drag = dragStateRef.current;
+    if (!drag || drag.slotIndex !== slotIndex) {
+      return;
+    }
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+      return;
+    }
+
+    const local = pointerToGarmentLocal(event.clientX, event.clientY, slotIndex);
+    if (!local) {
+      return;
+    }
+
+    updateSlot(slotIndex, (slot) => ({
+      ...slot,
+      positionX: local.x - drag.offsetX,
+      positionY: local.y - drag.offsetY,
+    }));
+  };
+
+  const handleLogoPointerUp = (event: React.PointerEvent<HTMLImageElement>) => {
+    dragStateRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   };
 
   const applyPlacementPreset = (index: number, nextPlacement: Placement) => {
@@ -438,33 +556,6 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
     }
   };
 
-  const updatePositionFromPointer = (clientX: number, clientY: number) => {
-    const mockup = mockupRef.current;
-    if (!mockup) {
-      return;
-    }
-
-    const rect = mockup.getBoundingClientRect();
-    const localX = clientX - rect.left;
-    const localY = clientY - rect.top;
-    const unscaledX = (localX - rect.width / 2) / viewZoom + rect.width / 2;
-    const unscaledY = (localY - rect.height / 2) / viewZoom + rect.height / 2;
-    const containerX = (unscaledX / rect.width) * 100;
-    const containerY = (unscaledY / rect.height) * 100;
-    const local = containerPercentToGarmentLocal(
-      containerX,
-      containerY,
-      activeCalibration.garmentBounds,
-      MOCKUP_CONTAINER_ASPECT,
-      productImageAspect,
-    );
-    updateSlot(activeSlotIndex, (slot) => ({
-      ...slot,
-      positionX: local.x,
-      positionY: local.y,
-    }));
-  };
-
   const handleZoomIn = () => {
     setViewZoom((current) => clamp(current + VIEW_ZOOM_STEP, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM));
   };
@@ -563,7 +654,9 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
       const exportMockupSide = resolveMockupImageSide(
         enabledSlots.map((slot) => slot.placement),
       );
-      const productPhotoUrl = getVariantPhotoUrl(selectedVariant, exportMockupSide);
+      const productPhotoUrl = toAbsoluteAssetUrl(
+        getVariantPhotoUrl(selectedVariant, exportMockupSide),
+      );
       const fallbackCalibration = resolvePreviewCalibration(
         selectedVariant,
         selectedProduct,
@@ -578,25 +671,18 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
 
       try {
         const exportLogos = uploadResults
-          .map(({ slot, slotIndex }) => {
-            const artworkUrl = slotArtworkUrls[slotIndex];
-            if (!artworkUrl) {
-              return null;
-            }
-            return {
-              artworkObjectUrl: artworkUrl,
-              logoGarmentPositionX: slot.positionX,
-              logoGarmentPositionY: slot.positionY,
-              logoWidthMm: slot.widthMm,
-              calibration: resolvePreviewCalibration(
-                selectedVariant,
-                selectedProduct,
-                slot.placement,
-              ),
-              placement: slot.placement,
-            };
-          })
-          .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+          .map(({ slot, upload }) => ({
+            artworkObjectUrl: upload.url,
+            logoGarmentPositionX: slot.positionX,
+            logoGarmentPositionY: slot.positionY,
+            logoWidthMm: slot.widthMm,
+            calibration: resolvePreviewCalibration(
+              selectedVariant,
+              selectedProduct,
+              slot.placement,
+            ),
+            placement: slot.placement,
+          }));
 
         const previewResult = await generatePreviewImageBlob({
           productImageSrc: productPhotoUrl,
@@ -616,10 +702,14 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
           previewCompositeUrl = compositeUpload.url;
           previewCompositeStoragePath = compositeUpload.path;
           if (previewResult.approximateFallback) {
-            previewCompositeExportError = APPROXIMATE_MOCKUP_WARNING;
+            previewCompositeExportError =
+              previewResult.errorMessage ?? APPROXIMATE_MOCKUP_WARNING;
+          } else if (previewResult.errorMessage) {
+            previewCompositeExportError = previewResult.errorMessage;
           }
         } else {
           previewCompositeExportError =
+            previewResult.errorMessage ??
             "Composite preview image could not be generated.";
         }
       } catch (exportError) {
@@ -958,13 +1048,6 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
           <div
             ref={mockupRef}
             className="relative mt-5 aspect-[4/3] isolate overflow-hidden rounded-xl border border-slate-200 bg-[#f8fafc] [color-scheme:light]"
-            onPointerMove={(event) => {
-              if (dragging) {
-                updatePositionFromPointer(event.clientX, event.clientY);
-              }
-            }}
-            onPointerUp={() => setDragging(false)}
-            onPointerLeave={() => setDragging(false)}
           >
             <div
               className="absolute inset-0"
@@ -1001,14 +1084,10 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
                       alt={`${slot.label} preview`}
                       draggable={false}
                       onLoad={(event) => handleArtworkPreviewLoad(index, event)}
-                      onPointerDown={(event) => {
-                        if (!isActive) {
-                          setActiveSlotIndex(index);
-                        }
-                        setDragging(true);
-                        event.currentTarget.setPointerCapture(event.pointerId);
-                        updatePositionFromPointer(event.clientX, event.clientY);
-                      }}
+                      onPointerDown={(event) => handleLogoPointerDown(index, event)}
+                      onPointerMove={(event) => handleLogoPointerMove(index, event)}
+                      onPointerUp={handleLogoPointerUp}
+                      onPointerCancel={handleLogoPointerUp}
                       style={{
                         left: `${overlay.position.x}%`,
                         top: `${overlay.position.y}%`,
