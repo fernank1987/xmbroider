@@ -103,12 +103,17 @@ export default function QuoteForm({ siteId, form }: QuoteFormProps) {
         projectDetails: fields.projectDetails,
       });
 
+      if (process.env.NODE_ENV === "development") {
+        console.log("[quote] created", {
+          quoteId: created.id,
+          source: created.source,
+        });
+      }
+
       void notifyQuoteRequestCreated(buildQuoteNotificationPayload(siteId, created));
 
       setFields(emptyFields);
-      setSuccessMessage(
-        "Thank you! Your quote request was submitted. We will follow up soon.",
-      );
+      setSuccessMessage("Quote request received. We'll follow up soon.");
     } catch (error) {
       setErrorMessage(getSubmitErrorMessage(error));
     } finally {

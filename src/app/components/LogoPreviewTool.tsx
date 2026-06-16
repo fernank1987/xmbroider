@@ -497,6 +497,13 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
         { quoteRequestId },
       );
 
+      if (process.env.NODE_ENV === "development") {
+        console.log("[quote] created", {
+          quoteId: created.id,
+          source: created.source,
+        });
+      }
+
       void notifyQuoteRequestCreated(buildQuoteNotificationPayload(siteId, created));
 
       setSuccessMessage(

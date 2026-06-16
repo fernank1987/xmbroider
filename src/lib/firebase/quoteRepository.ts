@@ -373,8 +373,108 @@ function sanitizeQuoteWritePayload(payload: Record<string, unknown>): Record<str
   return removeUndefinedDeep(payload, { path: "quoteRequests" }) as Record<string, unknown>;
 }
 
+function emptyQuoteRequestPreviewData(): QuoteRequestPreviewData {
+  return {
+    productId: null,
+    productName: null,
+    productType: null,
+    productLabel: null,
+    productVariantId: null,
+    colorName: null,
+    size: null,
+    productImageUrl: null,
+    placement: null,
+    logoSize: null,
+    logoWidthMm: null,
+    logoWidthInches: null,
+    estimatedLogoHeightMm: null,
+    productPhysicalWidthMm: null,
+    sizePresetLabel: null,
+    previewCalibrationUsed: null,
+    previewCalibrationSource: null,
+    productBrand: null,
+    productMaterial: null,
+    decorationMethod: null,
+    logoPositionX: null,
+    logoPositionY: null,
+    artworkUrl: null,
+    artworkStoragePath: null,
+    previewImageUrl: null,
+    previewImageStoragePath: null,
+    previewCompositeUrl: null,
+    previewCompositeStoragePath: null,
+    previewCompositeExportError: null,
+  };
+}
+
+/** Builds the in-memory quote returned to public clients (no Firestore read-back). */
+function buildQuoteRequestFromInput(
+  quoteRequestId: string,
+  input: CreateQuoteRequestInput,
+): QuoteRequest {
+  const source = input.source ?? "public_quote_form";
+  const now = new Date().toISOString();
+  const preview = input.preview;
+
+  const previewData: QuoteRequestPreviewData = preview
+    ? {
+        productId: preview.productId,
+        productName: preview.productName,
+        productType: preview.productType,
+        productLabel: preview.productLabel,
+        productVariantId: preview.productVariantId,
+        colorName: preview.colorName,
+        size: preview.size ?? null,
+        productImageUrl: preview.productImageUrl ?? null,
+        placement: preview.placement,
+        logoSize: preview.logoSize,
+        logoWidthMm: preview.logoWidthMm,
+        logoWidthInches: preview.logoWidthInches,
+        estimatedLogoHeightMm: preview.estimatedLogoHeightMm ?? null,
+        productPhysicalWidthMm: preview.productPhysicalWidthMm,
+        sizePresetLabel: preview.sizePresetLabel,
+        previewCalibrationUsed: preview.previewCalibrationUsed ?? false,
+        previewCalibrationSource: preview.previewCalibrationSource ?? null,
+        productBrand: preview.productBrand ?? null,
+        productMaterial: preview.productMaterial ?? null,
+        decorationMethod: preview.decorationMethod ?? null,
+        logoPositionX: preview.logoPositionX,
+        logoPositionY: preview.logoPositionY,
+        artworkUrl: preview.artworkUrl,
+        artworkStoragePath: preview.artworkStoragePath,
+        previewImageUrl: preview.previewImageUrl ?? null,
+        previewImageStoragePath: preview.previewImageStoragePath ?? null,
+        previewCompositeUrl: preview.previewCompositeUrl ?? null,
+        previewCompositeStoragePath: preview.previewCompositeStoragePath ?? null,
+        previewCompositeExportError: preview.previewCompositeExportError ?? null,
+      }
+    : emptyQuoteRequestPreviewData();
+
+  return {
+    id: quoteRequestId,
+    name: input.name.trim(),
+    email: input.email.trim(),
+    phone: input.phone?.trim() || null,
+    serviceNeeded: input.serviceNeeded.trim(),
+    projectDetails: input.projectDetails.trim(),
+    quantity: input.quantity?.trim() || null,
+    deadline: input.deadline?.trim() || null,
+    status: "new",
+    source,
+    adminReadAt: null,
+    notificationStatus: "pending",
+    notificationSentAt: null,
+    notificationErrorSummary: null,
+    createdAt: now,
+    updatedAt: now,
+    ...previewData,
+  };
+}
+
 /**
  * Creates a quote request at sites/{siteId}/quoteRequests/{quoteRequestId}.
+ * Public clients may only create — Firestore rules do not allow public read/update.
+ * Returns a locally built quote object; notification status is updated server-side.
  */
 export async function createQuoteRequest(
   siteId: string,
@@ -395,14 +495,7 @@ export async function createQuoteRequest(
 
   await setDoc(docRef, sanitizeQuoteWritePayload(buildQuoteRequestWritePayload(siteId, quoteRequestId, input)));
 
-  const saved = await getDoc(docRef);
-  const parsed = saved.exists() ? parseQuoteRequest(saved.id, saved.data()) : null;
-
-  if (!parsed) {
-    throw new Error("Quote request was saved but could not be read back.");
-  }
-
-  return parsed;
+  return buildQuoteRequestFromInput(quoteRequestId, input);
 }
 
 /** Lists quote requests for admin, newest first. */

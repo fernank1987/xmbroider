@@ -46,23 +46,36 @@ export async function notifyQuoteRequestCreated(
       body: JSON.stringify(payload),
     });
 
-    if (!response.ok && process.env.NODE_ENV === "development") {
-      const text = await response.text().catch(() => "");
-      console.warn("[quote-notification] request failed:", response.status, text);
+    if (!response.ok) {
+      if (process.env.NODE_ENV === "development") {
+        const text = await response.text().catch(() => "");
+        console.warn("[quote-notification] request failed:", {
+          quoteId: payload.quoteId,
+          status: response.status,
+          body: text,
+        });
+      }
       return;
     }
 
-    const result = (await response.json()) as { notificationStatus?: string; warning?: string };
+    const result = (await response.json()) as {
+      notificationStatus?: string;
+      warning?: string;
+    };
+
     if (process.env.NODE_ENV === "development") {
-      if (result.warning) {
-        console.warn("[quote-notification]", result.warning);
-      } else {
-        console.log("[quote-notification] status:", result.notificationStatus);
-      }
+      console.log("[quote-notification] result", {
+        quoteId: payload.quoteId,
+        notificationStatus: result.notificationStatus,
+        warning: result.warning ?? null,
+      });
     }
   } catch (error) {
     if (process.env.NODE_ENV === "development") {
-      console.warn("[quote-notification] request error:", error);
+      console.warn("[quote-notification] request error:", {
+        quoteId: payload.quoteId,
+        error,
+      });
     }
   }
 }
