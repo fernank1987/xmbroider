@@ -27,8 +27,7 @@ type AdminThemeContextValue = {
 
 const AdminThemeContext = createContext<AdminThemeContextValue | null>(null);
 
-const adminShellLight =
-  "min-h-screen bg-slate-50 text-slate-900 admin-dark:bg-zinc-950 admin-dark:text-zinc-100";
+import { adminShell } from "../lib/adminStyles";
 
 export function useAdminTheme(): AdminThemeContextValue {
   const context = useContext(AdminThemeContext);
@@ -68,7 +67,7 @@ export default function AdminThemeProvider({
   return (
     <AdminThemeContext.Provider value={value}>
       <div
-        className={`${adminShellLight} ${isDark ? "admin-dark" : ""}`}
+        className={`${adminShell} ${isDark ? "admin-dark" : ""}`}
         data-admin-theme={hydrated ? theme : "light"}
       >
         {children}

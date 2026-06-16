@@ -1,21 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createProduct,
+  createProductColorInput,
   deleteProduct,
   listProducts,
   parseSizesFromForm,
   updateProduct,
   type Product,
-  type ProductColor,
+  type UpdateProductInput,
 } from "@/lib/firebase/productRepository";
 import {
-  DEFAULT_APPAREL_CALIBRATION,
-  calibrationBoundsToPercents,
-  calibrationFromPercents,
-  type PreviewCalibration,
-} from "@/lib/previewCalibration";
+  calibrationFromFormValues,
+  getCalibrationFormValues,
+  getEffectiveColorCalibration,
+  getFirstFrontImageColor,
+  getProductDefaultCalibrationValues,
+  type CalibrationFormValues,
+} from "@/lib/productCalibrationAdmin";
 import {
   deleteProductImage,
   uploadProductImage,
@@ -31,15 +34,29 @@ import {
 } from "@/lib/productSlugs";
 import { siteContent } from "@/lib/siteContent";
 import {
+  formatCommaSeparatedList,
+  formatFeaturesTextarea,
+  isSt550StyleCode,
+  normalizeOptionalHex,
+  parseCommaSeparatedList,
+  parseFeaturesTextarea,
+  ST550_SPEC_DEFAULTS,
+} from "@/lib/productFormUtils";
+import {
   adminBodyText,
-  adminButtonDisabled,
   adminCard,
-  adminGalleryThumb,
   adminInput,
   adminLabel,
+  adminMainContent,
   adminNotice,
   adminSectionTitle,
 } from "../lib/adminStyles";
+import { useSaveStatus } from "../lib/useSaveStatus";
+import AdminSaveButton from "./AdminSaveButton";
+import ProductCalibrationEditor from "./ProductCalibrationEditor";
+import ProductColorRow from "./ProductColorRow";
+import SaveStatusMessage from "./SaveStatusMessage";
+import type { PreviewCalibration } from "@/lib/previewCalibration";
 
 const SITE_ID = siteContent.siteId;
 
@@ -56,24 +73,49 @@ function sizesToFormValue(sizes: string[]): string {
   return sizes.join(", ");
 }
 
-function getColorCalibrationValues(color: ProductColor) {
-  const calibration = color.previewCalibration ?? DEFAULT_APPAREL_CALIBRATION;
-  const percents = calibrationBoundsToPercents(calibration.garmentBounds);
+type VisualCalibrationTarget =
+  | { mode: "color"; productId: string; colorId: string }
+  | { mode: "product-default"; productId: string };
+
+function buildProductSaveUpdates(product: Product): UpdateProductInput {
   return {
-    xPercent: percents.xPercent,
-    yPercent: percents.yPercent,
-    widthPercent: percents.widthPercent,
-    heightPercent: percents.heightPercent,
-    physicalWidthMm: calibration.physicalWidthMm,
-    hasCustom: color.previewCalibration !== null,
+    name: product.name,
+    brand: product.brand,
+    styleCode: product.styleCode,
+    category: product.category,
+    description: product.description,
+    seoDescription: product.seoDescription?.trim() || null,
+    material: product.material?.trim() || null,
+    fabricWeight: product.fabricWeight?.trim() || null,
+    fit: product.fit?.trim() || null,
+    careInstructions: product.careInstructions?.trim() || null,
+    decorationMethods: product.decorationMethods ?? [],
+    features: product.features ?? [],
+    basePriceMin: product.basePriceMin,
+    basePriceMax: product.basePriceMax,
+    sizes: product.sizes,
+    isVisible: product.isVisible,
+    defaultPreviewCalibration: product.defaultPreviewCalibration,
+    colors: product.colors,
   };
 }
 
+function getExpandedColorKey(productId: string, colorId: string): string {
+  return `${productId}:${colorId}`;
+}
+
+function productActionKey(productId: string, action: string): string {
+  return `product:${productId}:${action}`;
+}
+
+function colorActionKey(productId: string, colorId: string, action: string): string {
+  return `color:${productId}:${colorId}:${action}`;
+}
+
 export default function AdminProductsEditor() {
+  const saveStatus = useSaveStatus();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
-  const [busyProductId, setBusyProductId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -86,11 +128,29 @@ export default function AdminProductsEditor() {
   const [priceMax, setPriceMax] = useState("");
   const [sizes, setSizes] = useState("");
   const [isVisible, setIsVisible] = useState(true);
+  const [material, setMaterial] = useState("");
+  const [fabricWeight, setFabricWeight] = useState("");
+  const [fit, setFit] = useState("");
+  const [careInstructions, setCareInstructions] = useState("");
+  const [decorationMethods, setDecorationMethods] = useState("");
+  const [features, setFeatures] = useState("");
+  const [seoDescription, setSeoDescription] = useState("");
 
   const [colorName, setColorName] = useState("");
   const [colorHex, setColorHex] = useState("");
   const [activeColorProductId, setActiveColorProductId] = useState<string | null>(null);
+  const [expandedColorKey, setExpandedColorKey] = useState<string | null>(null);
   const [brandFilter, setBrandFilter] = useState("all");
+  const [visualCalibrationTarget, setVisualCalibrationTarget] =
+    useState<VisualCalibrationTarget | null>(null);
+
+  const productsRef = useRef(products);
+  useEffect(() => {
+    productsRef.current = products;
+  }, [products]);
+
+  const getProductFromState = (productId: string): Product | null =>
+    productsRef.current.find((item) => item.id === productId) ?? null;
 
   const brands = useMemo(() => getProductBrands(products), [products]);
   const filteredProducts = useMemo(
@@ -101,6 +161,42 @@ export default function AdminProductsEditor() {
     () => groupProductsByBrand(filteredProducts),
     [filteredProducts],
   );
+
+  const visualCalibrationContext = useMemo(() => {
+    if (!visualCalibrationTarget) {
+      return null;
+    }
+
+    const product = products.find((item) => item.id === visualCalibrationTarget.productId);
+    if (!product) {
+      return null;
+    }
+
+    if (visualCalibrationTarget.mode === "product-default") {
+      const referenceColor = getFirstFrontImageColor(product);
+      if (!referenceColor?.frontImageUrl) {
+        return null;
+      }
+      return {
+        product,
+        color: referenceColor,
+        mode: "product-default" as const,
+        initialCalibration: product.defaultPreviewCalibration,
+      };
+    }
+
+    const color = product.colors.find((item) => item.id === visualCalibrationTarget.colorId);
+    if (!color?.frontImageUrl) {
+      return null;
+    }
+
+    return {
+      product,
+      color,
+      mode: "color" as const,
+      initialCalibration: color.previewCalibration,
+    };
+  }, [products, visualCalibrationTarget]);
 
   const createSlugPreview = useMemo(() => {
     const brandSlug = slugifyBrand(brand);
@@ -136,215 +232,219 @@ export default function AdminProductsEditor() {
     };
   }, []);
 
-  const handleCreateProduct = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleCreateProduct = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setCreating(true);
-    setStatusMessage(null);
-    setErrorMessage(null);
-
-    try {
-      const min = priceMin.trim() ? Number(priceMin) : null;
-      const max = priceMax.trim() ? Number(priceMax) : null;
-      const created = await createProduct(SITE_ID, {
-        name,
-        brand,
-        styleCode: styleCode.trim() || null,
-        category,
-        description,
-        basePriceMin: min,
-        basePriceMax: max,
-        sizes: parseSizesFromForm(sizes),
-        isVisible,
-      });
-      setProducts((current) => [...current, created]);
-      setName("");
-      setBrand("");
-      setStyleCode("");
-      setCategory("");
-      setDescription("");
-      setPriceMin("");
-      setPriceMax("");
-      setSizes("");
-      setIsVisible(true);
-      setStatusMessage("Product created.");
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error, "Unable to create product."));
-    } finally {
-      setCreating(false);
-    }
+    void saveStatus.runAction(
+      "create:product",
+      async () => {
+        setStatusMessage(null);
+        setErrorMessage(null);
+        const min = priceMin.trim() ? Number(priceMin) : null;
+        const max = priceMax.trim() ? Number(priceMax) : null;
+        const created = await createProduct(SITE_ID, {
+          name,
+          brand,
+          styleCode: styleCode.trim() || null,
+          category,
+          description,
+          seoDescription: seoDescription.trim() || null,
+          material: material.trim() || null,
+          fabricWeight: fabricWeight.trim() || null,
+          fit: fit.trim() || null,
+          careInstructions: careInstructions.trim() || null,
+          decorationMethods: parseCommaSeparatedList(decorationMethods),
+          features: parseFeaturesTextarea(features),
+          basePriceMin: min,
+          basePriceMax: max,
+          sizes: parseSizesFromForm(sizes),
+          isVisible,
+        });
+        setProducts((current) => [...current, created]);
+        setName("");
+        setBrand("");
+        setStyleCode("");
+        setCategory("");
+        setDescription("");
+        setPriceMin("");
+        setPriceMax("");
+        setSizes("");
+        setIsVisible(true);
+        setMaterial("");
+        setFabricWeight("");
+        setFit("");
+        setCareInstructions("");
+        setDecorationMethods("");
+        setFeatures("");
+        setSeoDescription("");
+        setStatusMessage("Product created.");
+      },
+      { savedMessage: "Product created" },
+    );
   };
 
-  const handleSaveProduct = async (product: Product) => {
-    setBusyProductId(product.id);
-    setStatusMessage(null);
-    setErrorMessage(null);
-
-    try {
-      const updated = await updateProduct(SITE_ID, product.id, {
-        name: product.name,
-        brand: product.brand,
-        styleCode: product.styleCode,
-        category: product.category,
-        description: product.description,
-        basePriceMin: product.basePriceMin,
-        basePriceMax: product.basePriceMax,
-        sizes: product.sizes,
-        isVisible: product.isVisible,
-        colors: product.colors,
-      });
-      setProducts((current) =>
-        current.map((item) => (item.id === updated.id ? updated : item)),
-      );
-      setStatusMessage("Product saved.");
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error, "Unable to save product."));
-    } finally {
-      setBusyProductId(null);
-    }
+  const handleSaveProduct = (productId: string) => {
+    void saveStatus.runAction(
+      productActionKey(productId, "save"),
+      async () => {
+        const product = getProductFromState(productId);
+        if (!product) {
+          throw new Error("Product not found. Refresh and try again.");
+        }
+        setErrorMessage(null);
+        const updated = await updateProduct(SITE_ID, productId, buildProductSaveUpdates(product));
+        setProducts((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        setStatusMessage("Product saved.");
+      },
+      { savedMessage: "Product saved" },
+    );
   };
 
-  const handleToggleVisibility = async (product: Product) => {
-    setBusyProductId(product.id);
-    try {
-      const updated = await updateProduct(SITE_ID, product.id, {
-        isVisible: !product.isVisible,
-      });
-      setProducts((current) =>
-        current.map((item) => (item.id === updated.id ? updated : item)),
-      );
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error, "Unable to update visibility."));
-    } finally {
-      setBusyProductId(null);
+  const handleToggleVisibility = (productId: string) => {
+    const product = getProductFromState(productId);
+    if (!product) {
+      return;
     }
+    void saveStatus.runAction(
+      productActionKey(productId, "visibility"),
+      async () => {
+        const updated = await updateProduct(SITE_ID, productId, {
+          isVisible: !product.isVisible,
+        });
+        setProducts((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        setStatusMessage(product.isVisible ? "Product hidden." : "Product visible.");
+      },
+      {
+        savedMessage: product.isVisible ? "Hidden" : "Visible",
+      },
+    );
   };
 
-  const handleDeleteProduct = async (productId: string) => {
+  const handleDeleteProduct = (productId: string) => {
     if (!window.confirm("Delete this product and its images?")) {
       return;
     }
-    setBusyProductId(productId);
-    try {
-      await deleteProduct(SITE_ID, productId);
-      setProducts((current) => current.filter((item) => item.id !== productId));
-      setStatusMessage("Product deleted.");
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error, "Unable to delete product."));
-    } finally {
-      setBusyProductId(null);
-    }
+    void saveStatus.runAction(
+      productActionKey(productId, "delete"),
+      async () => {
+        await deleteProduct(SITE_ID, productId);
+        setProducts((current) => current.filter((item) => item.id !== productId));
+        setStatusMessage("Product deleted.");
+      },
+      { savedMessage: "Deleted" },
+    );
   };
 
-  const handleAddColor = async (product: Product) => {
+  const handleAddColor = (productId: string) => {
     if (!colorName.trim()) {
-      setErrorMessage("Color name is required.");
+      saveStatus.setLocalError(productActionKey(productId, "addColor"), "Color name is required.");
       return;
     }
 
-    setBusyProductId(product.id);
-    setErrorMessage(null);
-
-    const newColor: ProductColor = {
-      id: crypto.randomUUID().slice(0, 8),
-      name: colorName.trim(),
-      hex: colorHex.trim() || null,
-      frontImageUrl: null,
-      frontImageStoragePath: null,
-      backImageUrl: null,
-      backImageStoragePath: null,
-      previewCalibration: null,
-    };
-
-    try {
-      const updated = await updateProduct(SITE_ID, product.id, {
-        colors: [...product.colors, newColor],
-      });
-      setProducts((current) =>
-        current.map((item) => (item.id === updated.id ? updated : item)),
-      );
-      setColorName("");
-      setColorHex("");
-      setActiveColorProductId(null);
-      setStatusMessage("Color added.");
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error, "Unable to add color."));
-    } finally {
-      setBusyProductId(null);
+    const product = getProductFromState(productId);
+    if (!product) {
+      return;
     }
+
+    void saveStatus.runAction(
+      productActionKey(productId, "addColor"),
+      async () => {
+        setErrorMessage(null);
+        const newColor = createProductColorInput(colorName, colorHex);
+        const updated = await updateProduct(SITE_ID, productId, {
+          colors: [...product.colors, newColor],
+        });
+        setProducts((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        setColorName("");
+        setColorHex("");
+        setActiveColorProductId(null);
+        setStatusMessage("Color added.");
+      },
+      { savedMessage: "Color added" },
+    );
   };
 
-  const handleColorImageUpload = async (
-    product: Product,
+  const handleColorImageUpload = (
+    productId: string,
     colorId: string,
     side: "front" | "back",
     file: File,
   ) => {
+    const uploadKey = colorActionKey(productId, colorId, `${side}Upload`);
     const validationError = validateQuoteArtworkFile(file);
     if (validationError) {
-      setErrorMessage(validationError);
+      saveStatus.setLocalError(uploadKey, validationError);
       return;
     }
 
-    setBusyProductId(product.id);
-    setErrorMessage(null);
+    void saveStatus.runAction(
+      uploadKey,
+      async () => {
+        const product = getProductFromState(productId);
+        if (!product) {
+          throw new Error("Product not found.");
+        }
+        setErrorMessage(null);
 
-    const color = product.colors.find((item) => item.id === colorId);
-    if (!color) {
-      setErrorMessage("Color not found.");
-      setBusyProductId(null);
-      return;
-    }
-
-    try {
-      const upload = await uploadProductImage(
-        SITE_ID,
-        product.brandSlug,
-        product.slug,
-        color.name,
-        side,
-        file,
-      );
-      const colors = product.colors.map((color) => {
-        if (color.id !== colorId) {
-          return color;
+        const color = product.colors.find((item) => item.id === colorId);
+        if (!color) {
+          throw new Error("Color not found.");
         }
 
-        const oldPath =
-          side === "front" ? color.frontImageStoragePath : color.backImageStoragePath;
-        if (oldPath) {
-          void deleteProductImage(oldPath).catch(() => undefined);
-        }
+        const upload = await uploadProductImage(
+          SITE_ID,
+          product.brandSlug,
+          product.slug,
+          color.name,
+          side,
+          file,
+        );
+        const colors = product.colors.map((entry) => {
+          if (entry.id !== colorId) {
+            return entry;
+          }
 
-        if (side === "front") {
+          const oldPath =
+            side === "front" ? entry.frontImageStoragePath : entry.backImageStoragePath;
+          if (oldPath) {
+            void deleteProductImage(oldPath).catch(() => undefined);
+          }
+
+          if (side === "front") {
+            return {
+              ...entry,
+              frontImageUrl: upload.url,
+              frontImageStoragePath: upload.path,
+            };
+          }
           return {
-            ...color,
-            frontImageUrl: upload.url,
-            frontImageStoragePath: upload.path,
+            ...entry,
+            backImageUrl: upload.url,
+            backImageStoragePath: upload.path,
           };
-        }
-        return {
-          ...color,
-          backImageUrl: upload.url,
-          backImageStoragePath: upload.path,
-        };
-      });
+        });
 
-      const updated = await updateProduct(SITE_ID, product.id, { colors });
-      setProducts((current) =>
-        current.map((item) => (item.id === updated.id ? updated : item)),
-      );
-      setStatusMessage(`${side === "front" ? "Front" : "Back"} image uploaded.`);
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error, "Unable to upload product image."));
-    } finally {
-      setBusyProductId(null);
-    }
+        const updated = await updateProduct(SITE_ID, productId, { colors });
+        setProducts((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        setStatusMessage(`${side === "front" ? "Front" : "Back"} image uploaded and saved.`);
+      },
+      {
+        savedMessage: side === "front" ? "Front uploaded" : "Back uploaded",
+      },
+    );
   };
 
   const updateColorCalibration = (
     productId: string,
     colorId: string,
-    field: "xPercent" | "yPercent" | "widthPercent" | "heightPercent" | "physicalWidthMm",
+    field: keyof CalibrationFormValues,
     value: number,
   ) => {
     setProducts((current) =>
@@ -358,17 +458,14 @@ export default function AdminProductsEditor() {
             return color;
           }
 
-          const currentValues = getColorCalibrationValues(color);
+          const base = getEffectiveColorCalibration(product, color);
+          const currentValues = getCalibrationFormValues(base);
           const nextValues = { ...currentValues, [field]: value };
-          const previewCalibration: PreviewCalibration = calibrationFromPercents(
-            nextValues.xPercent,
-            nextValues.yPercent,
-            nextValues.widthPercent,
-            nextValues.heightPercent,
-            nextValues.physicalWidthMm,
-          );
 
-          return { ...color, previewCalibration };
+          return {
+            ...color,
+            previewCalibration: calibrationFromFormValues(nextValues),
+          };
         });
 
         return { ...product, colors };
@@ -376,7 +473,239 @@ export default function AdminProductsEditor() {
     );
   };
 
-  const clearColorCalibration = (productId: string, colorId: string) => {
+  const updateProductDefaultCalibration = (
+    productId: string,
+    field: keyof CalibrationFormValues,
+    value: number,
+  ) => {
+    setProducts((current) =>
+      current.map((product) => {
+        if (product.id !== productId) {
+          return product;
+        }
+
+        const baseValues = getProductDefaultCalibrationValues(product);
+        const nextValues = { ...baseValues, [field]: value };
+
+        return {
+          ...product,
+          defaultPreviewCalibration: calibrationFromFormValues(nextValues),
+        };
+      }),
+    );
+  };
+
+  const handleSaveProductDefaultCalibration = (productId: string) => {
+    void saveStatus.runAction(
+      productActionKey(productId, "defaultCalibration"),
+      async () => {
+        const product = getProductFromState(productId);
+        if (!product) {
+          throw new Error("Product not found.");
+        }
+        setErrorMessage(null);
+        const calibration = calibrationFromFormValues(
+          getProductDefaultCalibrationValues(product),
+        );
+        const updated = await updateProduct(SITE_ID, productId, {
+          defaultPreviewCalibration: calibration,
+        });
+        setProducts((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        setStatusMessage("Product default calibration saved.");
+      },
+      { savedMessage: "Default calibration saved" },
+    );
+  };
+
+  const handleResetProductDefaultCalibration = (productId: string) => {
+    void saveStatus.runAction(
+      productActionKey(productId, "resetDefaultCalibration"),
+      async () => {
+        setErrorMessage(null);
+        const updated = await updateProduct(SITE_ID, productId, {
+          defaultPreviewCalibration: null,
+        });
+        setProducts((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        setStatusMessage("Product default calibration reset.");
+      },
+      { savedMessage: "Default calibration reset" },
+    );
+  };
+
+  const handleUseProductDefaultForColor = (productId: string, colorId: string) => {
+    void saveStatus.runAction(
+      colorActionKey(productId, colorId, "useDefault"),
+      async () => {
+        const product = getProductFromState(productId);
+        if (!product) {
+          throw new Error("Product not found.");
+        }
+        setErrorMessage(null);
+        const colors = product.colors.map((color) =>
+          color.id === colorId ? { ...color, previewCalibration: null } : color,
+        );
+        const updated = await updateProduct(SITE_ID, productId, { colors });
+        setProducts((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        setStatusMessage("Color now uses product default calibration.");
+      },
+      { savedMessage: "Using product default" },
+    );
+  };
+
+  const handleCustomizeColorCalibration = (productId: string, colorId: string) => {
+    setProducts((current) =>
+      current.map((product) => {
+        if (product.id !== productId) {
+          return product;
+        }
+
+        return {
+          ...product,
+          colors: product.colors.map((color) => {
+            if (color.id !== colorId || color.previewCalibration) {
+              return color;
+            }
+            return {
+              ...color,
+              previewCalibration: getEffectiveColorCalibration(product, color),
+            };
+          }),
+        };
+      }),
+    );
+    saveStatus.setLocalSuccess(
+      colorActionKey(productId, colorId, "customize"),
+      "Custom calibration enabled — adjust fields or save product",
+    );
+  };
+
+  const handleDeleteColor = (productId: string, colorId: string) => {
+    if (!window.confirm("Delete this color and its images?")) {
+      return;
+    }
+
+    void saveStatus.runAction(
+      colorActionKey(productId, colorId, "delete"),
+      async () => {
+        const product = getProductFromState(productId);
+        const color = product?.colors.find((item) => item.id === colorId);
+        if (!product || !color) {
+          throw new Error("Color not found.");
+        }
+
+        setErrorMessage(null);
+
+        if (color.frontImageStoragePath) {
+          await deleteProductImage(color.frontImageStoragePath).catch(() => undefined);
+        }
+        if (color.backImageStoragePath) {
+          await deleteProductImage(color.backImageStoragePath).catch(() => undefined);
+        }
+
+        const colors = product.colors.filter((item) => item.id !== colorId);
+        const updated = await updateProduct(SITE_ID, productId, { colors });
+        setProducts((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        if (expandedColorKey === getExpandedColorKey(productId, colorId)) {
+          setExpandedColorKey(null);
+        }
+        setStatusMessage("Color deleted.");
+      },
+      { savedMessage: "Color deleted" },
+    );
+  };
+
+  const handleVisualCalibrationSave = async (calibration: PreviewCalibration) => {
+    if (!visualCalibrationContext) {
+      return;
+    }
+
+    const { product } = visualCalibrationContext;
+    const calibrationKey =
+      visualCalibrationContext.mode === "product-default"
+        ? productActionKey(product.id, "visualCalibration")
+        : colorActionKey(product.id, visualCalibrationContext.color.id, "visualCalibration");
+
+    await saveStatus.runAction(
+      calibrationKey,
+      async () => {
+        setErrorMessage(null);
+
+        if (visualCalibrationContext.mode === "product-default") {
+          const updated = await updateProduct(SITE_ID, product.id, {
+            defaultPreviewCalibration: calibration,
+          });
+          setProducts((current) =>
+            current.map((item) => (item.id === updated.id ? updated : item)),
+          );
+          setStatusMessage("Product default calibration saved.");
+        } else {
+          const { color } = visualCalibrationContext;
+          const colors = product.colors.map((item) =>
+            item.id === color.id ? { ...item, previewCalibration: calibration } : item,
+          );
+          const updated = await updateProduct(SITE_ID, product.id, { colors });
+          setProducts((current) =>
+            current.map((item) => (item.id === updated.id ? updated : item)),
+          );
+          setStatusMessage(`Calibration saved for ${color.name}.`);
+        }
+        setVisualCalibrationTarget(null);
+      },
+      {
+        savedMessage:
+          visualCalibrationContext.mode === "product-default"
+            ? "Calibration saved"
+            : `Saved ${visualCalibrationContext.color.name}`,
+      },
+    );
+  };
+
+  const updateProductSpec = (productId: string, patch: Partial<Product>) => {
+    setProducts((current) =>
+      current.map((product) =>
+        product.id === productId ? { ...product, ...patch } : product,
+      ),
+    );
+  };
+
+  const applySt550DefaultsToCreateForm = () => {
+    setMaterial(ST550_SPEC_DEFAULTS.material);
+    setFabricWeight(ST550_SPEC_DEFAULTS.fabricWeight);
+    setFit(ST550_SPEC_DEFAULTS.fit);
+    setCareInstructions(ST550_SPEC_DEFAULTS.careInstructions);
+    setDecorationMethods(formatCommaSeparatedList([...ST550_SPEC_DEFAULTS.decorationMethods]));
+    setFeatures(formatFeaturesTextarea([...ST550_SPEC_DEFAULTS.features]));
+  };
+
+  const applySt550DefaultsToProduct = (productId: string) => {
+    updateProductSpec(productId, {
+      material: ST550_SPEC_DEFAULTS.material,
+      fabricWeight: ST550_SPEC_DEFAULTS.fabricWeight,
+      fit: ST550_SPEC_DEFAULTS.fit,
+      careInstructions: ST550_SPEC_DEFAULTS.careInstructions || null,
+      decorationMethods: [...ST550_SPEC_DEFAULTS.decorationMethods],
+      features: [...ST550_SPEC_DEFAULTS.features],
+    });
+    saveStatus.setLocalSuccess(
+      productActionKey(productId, "st550"),
+      "Defaults applied — remember to save",
+    );
+  };
+
+  const updateColorDetails = (
+    productId: string,
+    colorId: string,
+    field: "name" | "hex" | "sortOrder" | "isVisible",
+    value: string | number | boolean,
+  ) => {
     setProducts((current) =>
       current.map((product) => {
         if (product.id !== productId) {
@@ -384,11 +713,53 @@ export default function AdminProductsEditor() {
         }
         return {
           ...product,
-          colors: product.colors.map((color) =>
-            color.id === colorId ? { ...color, previewCalibration: null } : color,
-          ),
+          colors: product.colors.map((color) => {
+            if (color.id !== colorId) {
+              return color;
+            }
+            if (field === "name") {
+              return { ...color, name: String(value).trim() };
+            }
+            if (field === "hex") {
+              return { ...color, hex: normalizeOptionalHex(String(value)) };
+            }
+            if (field === "sortOrder") {
+              return { ...color, sortOrder: Number(value) };
+            }
+            return { ...color, isVisible: Boolean(value) };
+          }),
         };
       }),
+    );
+  };
+
+  const handleSaveColorDetails = (productId: string, colorId: string) => {
+    const product = getProductFromState(productId);
+    const color = product?.colors.find((item) => item.id === colorId);
+    if (!color?.name.trim()) {
+      saveStatus.setLocalError(
+        colorActionKey(productId, colorId, "details"),
+        "Color name is required.",
+      );
+      return;
+    }
+
+    void saveStatus.runAction(
+      colorActionKey(productId, colorId, "details"),
+      async () => {
+        if (!product) {
+          throw new Error("Product not found.");
+        }
+        setErrorMessage(null);
+        const updated = await updateProduct(SITE_ID, productId, {
+          colors: product.colors,
+        });
+        setProducts((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        setStatusMessage(`Color details saved for ${color.name}.`);
+      },
+      { savedMessage: `Saved ${color.name}` },
     );
   };
 
@@ -445,31 +816,37 @@ export default function AdminProductsEditor() {
             <code className="text-xs">{product.brandSlug}/{product.slug}</code>
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={busyProductId === product.id}
-            onClick={() => void handleToggleVisibility(product)}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium admin-dark:border-zinc-700"
-          >
-            {product.isVisible ? "Hide" : "Show"}
-          </button>
-          <button
-            type="button"
-            disabled={busyProductId === product.id}
-            onClick={() => void handleSaveProduct(product)}
-            className="rounded-lg bg-amber-700 px-3 py-1.5 text-sm font-semibold text-white admin-dark:bg-amber-600"
-          >
-            Save
-          </button>
-          <button
-            type="button"
-            disabled={busyProductId === product.id}
-            onClick={() => void handleDeleteProduct(product.id)}
-            className="rounded-lg border border-red-300 px-3 py-1.5 text-sm font-semibold text-red-700 admin-dark:border-red-500/40 admin-dark:text-red-300"
-          >
-            Delete
-          </button>
+        <div className="flex flex-wrap items-start gap-2">
+          <AdminSaveButton
+            actionKey={productActionKey(product.id, "visibility")}
+            saveStatus={saveStatus}
+            idleLabel={product.isVisible ? "Hide" : "Show"}
+            savingLabel="Saving…"
+            savedLabel={product.isVisible ? "Hidden" : "Visible"}
+            variant="outline"
+            size="sm"
+            onClick={() => handleToggleVisibility(product.id)}
+          />
+          <AdminSaveButton
+            actionKey={productActionKey(product.id, "save")}
+            saveStatus={saveStatus}
+            idleLabel="Save"
+            savingLabel="Saving…"
+            savedLabel="Saved"
+            variant="primary"
+            size="sm"
+            onClick={() => handleSaveProduct(product.id)}
+          />
+          <AdminSaveButton
+            actionKey={productActionKey(product.id, "delete")}
+            saveStatus={saveStatus}
+            idleLabel="Delete"
+            savingLabel="Deleting…"
+            savedLabel="Deleted"
+            variant="danger"
+            size="sm"
+            onClick={() => handleDeleteProduct(product.id)}
+          />
         </div>
       </div>
 
@@ -535,190 +912,334 @@ export default function AdminProductsEditor() {
       </div>
 
       <div className="border-t border-slate-200 pt-4 admin-dark:border-zinc-700">
-        <h4 className="text-sm font-semibold text-slate-900 admin-dark:text-white">Colors & images</h4>
-        <div className="mt-3 space-y-3">
-          {product.colors.map((color) => (
-            <div key={color.id} className="rounded-lg border border-slate-200 p-3 admin-dark:border-zinc-700">
-              <p className="font-medium text-slate-900 admin-dark:text-white">
-                {color.name}
-                {color.hex ? ` · ${color.hex}` : ""}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-3">
-                {color.frontImageUrl && (
-                  <div className={adminGalleryThumb}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={color.frontImageUrl} alt="" className="max-h-full max-w-full object-contain p-2" />
-                  </div>
-                )}
-                {color.backImageUrl && (
-                  <div className={adminGalleryThumb}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={color.backImageUrl} alt="" className="max-h-full max-w-full object-contain p-2" />
-                  </div>
-                )}
-              </div>
-              <div className="mt-2 flex flex-wrap gap-3">
-                <label className="text-sm">
-                  Front image
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h4 className="text-sm font-semibold text-slate-900 admin-dark:text-white">
+            Product specs
+          </h4>
+          {isSt550StyleCode(product.styleCode) && (
+            <div className="flex flex-col items-end gap-1">
+              <button
+                type="button"
+                onClick={() => applySt550DefaultsToProduct(product.id)}
+                className="text-xs font-medium text-amber-700 admin-dark:text-amber-400"
+              >
+                Apply ST550 defaults
+              </button>
+              {saveStatus.getEntry(productActionKey(product.id, "st550")).status === "saved" && (
+                <SaveStatusMessage
+                  status="saved"
+                  message={saveStatus.getEntry(productActionKey(product.id, "st550")).message}
+                />
+              )}
+            </div>
+          )}
+        </div>
+        <div className="mt-3 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className={adminLabel}>Material</label>
+            <input
+              className={adminInput}
+              value={product.material ?? ""}
+              placeholder="100% polyester interlock"
+              onChange={(event) =>
+                updateProductSpec(product.id, {
+                  material: event.target.value,
+                })
+              }
+            />
+          </div>
+          <div>
+            <label className={adminLabel}>Fabric weight</label>
+            <input
+              className={adminInput}
+              value={product.fabricWeight ?? ""}
+              placeholder="3.8 oz"
+              onChange={(event) =>
+                updateProductSpec(product.id, {
+                  fabricWeight: event.target.value,
+                })
+              }
+            />
+          </div>
+          <div>
+            <label className={adminLabel}>Fit</label>
+            <input
+              className={adminInput}
+              value={product.fit ?? ""}
+              placeholder="Adult unisex"
+              onChange={(event) =>
+                updateProductSpec(product.id, { fit: event.target.value })
+              }
+            />
+          </div>
+          <div>
+            <label className={adminLabel}>Decoration methods</label>
+            <input
+              className={adminInput}
+              value={formatCommaSeparatedList(product.decorationMethods)}
+              placeholder="Embroidery, DTF Heat Press"
+              onChange={(event) =>
+                updateProductSpec(product.id, {
+                  decorationMethods: parseCommaSeparatedList(event.target.value),
+                })
+              }
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={adminLabel}>Features (one per line)</label>
+            <textarea
+              className={adminInput}
+              rows={4}
+              value={formatFeaturesTextarea(product.features)}
+              onChange={(event) =>
+                updateProductSpec(product.id, {
+                  features: parseFeaturesTextarea(event.target.value),
+                })
+              }
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={adminLabel}>Care instructions</label>
+            <textarea
+              className={adminInput}
+              rows={2}
+              value={product.careInstructions ?? ""}
+              onChange={(event) =>
+                updateProductSpec(product.id, {
+                  careInstructions: event.target.value,
+                })
+              }
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={adminLabel}>SEO description (optional)</label>
+            <textarea
+              className={adminInput}
+              rows={2}
+              value={product.seoDescription ?? ""}
+              onChange={(event) =>
+                updateProductSpec(product.id, {
+                  seoDescription: event.target.value,
+                })
+              }
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-slate-200 pt-4 admin-dark:border-zinc-700">
+        <h4 className="text-sm font-semibold text-slate-900 admin-dark:text-white">
+          Default preview calibration
+        </h4>
+        <p className={`mt-1 text-xs ${adminBodyText}`}>
+          This default applies to all colors unless a color has its own custom calibration.
+        </p>
+        {(() => {
+          const defaultValues = getProductDefaultCalibrationValues(product);
+          const referenceColor = getFirstFrontImageColor(product);
+          return (
+            <div className="mt-3 space-y-3">
+              <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                <div>
+                  <label className={adminLabel}>Garment X %</label>
                   <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    disabled={busyProductId === product.id}
-                    className="mt-1 block text-xs"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) void handleColorImageUpload(product, color.id, "front", file);
-                      e.target.value = "";
-                    }}
+                    className={adminInput}
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={defaultValues.xPercent}
+                    onChange={(event) =>
+                      updateProductDefaultCalibration(
+                        product.id,
+                        "xPercent",
+                        Number(event.target.value),
+                      )
+                    }
                   />
-                </label>
-                <label className="text-sm">
-                  Back image
+                </div>
+                <div>
+                  <label className={adminLabel}>Garment Y %</label>
                   <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    disabled={busyProductId === product.id}
-                    className="mt-1 block text-xs"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) void handleColorImageUpload(product, color.id, "back", file);
-                      e.target.value = "";
-                    }}
+                    className={adminInput}
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={defaultValues.yPercent}
+                    onChange={(event) =>
+                      updateProductDefaultCalibration(
+                        product.id,
+                        "yPercent",
+                        Number(event.target.value),
+                      )
+                    }
                   />
-                </label>
+                </div>
+                <div>
+                  <label className={adminLabel}>Garment Width %</label>
+                  <input
+                    className={adminInput}
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="0.1"
+                    value={defaultValues.widthPercent}
+                    onChange={(event) =>
+                      updateProductDefaultCalibration(
+                        product.id,
+                        "widthPercent",
+                        Number(event.target.value),
+                      )
+                    }
+                  />
+                </div>
+                <div>
+                  <label className={adminLabel}>Garment Height %</label>
+                  <input
+                    className={adminInput}
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="0.1"
+                    value={defaultValues.heightPercent}
+                    onChange={(event) =>
+                      updateProductDefaultCalibration(
+                        product.id,
+                        "heightPercent",
+                        Number(event.target.value),
+                      )
+                    }
+                  />
+                </div>
+                <div>
+                  <label className={adminLabel}>Physical width mm</label>
+                  <input
+                    className={adminInput}
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={defaultValues.physicalWidthMm}
+                    onChange={(event) =>
+                      updateProductDefaultCalibration(
+                        product.id,
+                        "physicalWidthMm",
+                        Number(event.target.value),
+                      )
+                    }
+                  />
+                </div>
               </div>
-              <div className="mt-3 border-t border-slate-200 pt-3 admin-dark:border-zinc-700">
-                <p className="text-xs text-slate-600 admin-dark:text-zinc-400">
-                  Use this to mark where the real shirt/hat is inside the image. This makes mm
-                  logo sizing more accurate.
-                </p>
-                {(() => {
-                  const calibrationValues = getColorCalibrationValues(color);
-                  return (
-                    <div className="mt-2 grid gap-2 sm:grid-cols-3">
-                      <div>
-                        <label className={adminLabel}>Garment X %</label>
-                        <input
-                          className={adminInput}
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="0.1"
-                          value={calibrationValues.xPercent}
-                          onChange={(e) =>
-                            updateColorCalibration(
-                              product.id,
-                              color.id,
-                              "xPercent",
-                              Number(e.target.value),
-                            )
-                          }
-                        />
-                      </div>
-                      <div>
-                        <label className={adminLabel}>Garment Y %</label>
-                        <input
-                          className={adminInput}
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="0.1"
-                          value={calibrationValues.yPercent}
-                          onChange={(e) =>
-                            updateColorCalibration(
-                              product.id,
-                              color.id,
-                              "yPercent",
-                              Number(e.target.value),
-                            )
-                          }
-                        />
-                      </div>
-                      <div>
-                        <label className={adminLabel}>Garment Width %</label>
-                        <input
-                          className={adminInput}
-                          type="number"
-                          min="1"
-                          max="100"
-                          step="0.1"
-                          value={calibrationValues.widthPercent}
-                          onChange={(e) =>
-                            updateColorCalibration(
-                              product.id,
-                              color.id,
-                              "widthPercent",
-                              Number(e.target.value),
-                            )
-                          }
-                        />
-                      </div>
-                      <div>
-                        <label className={adminLabel}>Garment Height %</label>
-                        <input
-                          className={adminInput}
-                          type="number"
-                          min="1"
-                          max="100"
-                          step="0.1"
-                          value={calibrationValues.heightPercent}
-                          onChange={(e) =>
-                            updateColorCalibration(
-                              product.id,
-                              color.id,
-                              "heightPercent",
-                              Number(e.target.value),
-                            )
-                          }
-                        />
-                      </div>
-                      <div>
-                        <label className={adminLabel}>Physical width mm</label>
-                        <input
-                          className={adminInput}
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={calibrationValues.physicalWidthMm}
-                          onChange={(e) =>
-                            updateColorCalibration(
-                              product.id,
-                              color.id,
-                              "physicalWidthMm",
-                              Number(e.target.value),
-                            )
-                          }
-                        />
-                      </div>
-                      <div className="flex items-end">
-                        <button
-                          type="button"
-                          className="text-xs font-medium text-amber-700 admin-dark:text-amber-400"
-                          onClick={() => clearColorCalibration(product.id, color.id)}
-                        >
-                          Use default calibration
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })()}
+              <div className="flex flex-wrap items-start gap-2">
+                <AdminSaveButton
+                  actionKey={productActionKey(product.id, "defaultCalibration")}
+                  saveStatus={saveStatus}
+                  idleLabel="Save product default calibration"
+                  savingLabel="Saving…"
+                  savedLabel="Saved"
+                  variant="primary"
+                  size="xs"
+                  onClick={() => handleSaveProductDefaultCalibration(product.id)}
+                />
+                <AdminSaveButton
+                  actionKey={productActionKey(product.id, "resetDefaultCalibration")}
+                  saveStatus={saveStatus}
+                  idleLabel="Reset product default calibration"
+                  savingLabel="Resetting…"
+                  savedLabel="Reset"
+                  variant="outline"
+                  size="xs"
+                  disabled={!product.defaultPreviewCalibration}
+                  onClick={() => handleResetProductDefaultCalibration(product.id)}
+                />
+                <button
+                  type="button"
+                  disabled={
+                    !referenceColor?.frontImageUrl ||
+                    saveStatus.isSaving(productActionKey(product.id, "defaultCalibration"))
+                  }
+                  onClick={() =>
+                    setVisualCalibrationTarget({
+                      mode: "product-default",
+                      productId: product.id,
+                    })
+                  }
+                  className="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-800 admin-dark:border-amber-500/40 admin-dark:text-amber-300"
+                >
+                  Calibrate visually
+                </button>
               </div>
             </div>
-          ))}
+          );
+        })()}
+      </div>
+
+      <div className="border-t border-slate-200 pt-4 admin-dark:border-zinc-700">
+        <h4 className="text-sm font-semibold text-slate-900 admin-dark:text-white">Colors & images</h4>
+        <div className="mt-3 space-y-2">
+          {product.colors.map((color) => {
+            const colorKey = getExpandedColorKey(product.id, color.id);
+            return (
+              <ProductColorRow
+                key={color.id}
+                product={product}
+                color={color}
+                expanded={expandedColorKey === colorKey}
+                saveStatus={saveStatus}
+                onToggleExpand={() =>
+                  setExpandedColorKey((current) =>
+                    current === colorKey ? null : colorKey,
+                  )
+                }
+                onCollapse={() => setExpandedColorKey(null)}
+                onDelete={() => handleDeleteColor(product.id, color.id)}
+                onUploadFront={(file) =>
+                  handleColorImageUpload(product.id, color.id, "front", file)
+                }
+                onUploadBack={(file) =>
+                  handleColorImageUpload(product.id, color.id, "back", file)
+                }
+                onCalibrationFieldChange={(field, value) =>
+                  updateColorCalibration(product.id, color.id, field, value)
+                }
+                onUseProductDefault={() =>
+                  handleUseProductDefaultForColor(product.id, color.id)
+                }
+                onCustomizeForColor={() =>
+                  handleCustomizeColorCalibration(product.id, color.id)
+                }
+                onVisualCalibrate={() =>
+                  setVisualCalibrationTarget({
+                    mode: "color",
+                    productId: product.id,
+                    colorId: color.id,
+                  })
+                }
+                onColorDetailsChange={(field, value) =>
+                  updateColorDetails(product.id, color.id, field, value)
+                }
+                onSaveColorDetails={() => handleSaveColorDetails(product.id, color.id)}
+              />
+            );
+          })}
         </div>
 
         {activeColorProductId === product.id ? (
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <input className={adminInput} placeholder="Color name" value={colorName} onChange={(e) => setColorName(e.target.value)} />
-            <input className={adminInput} placeholder="#hex optional" value={colorHex} onChange={(e) => setColorHex(e.target.value)} />
-            <button
-              type="button"
-              disabled={busyProductId === product.id}
-              onClick={() => void handleAddColor(product)}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white admin-dark:bg-zinc-700"
-            >
-              Add color
-            </button>
+          <div className="mt-4 space-y-2">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <input className={adminInput} placeholder="Color name" value={colorName} onChange={(e) => setColorName(e.target.value)} />
+              <input className={adminInput} placeholder="#hex optional" value={colorHex} onChange={(e) => setColorHex(e.target.value)} />
+              <AdminSaveButton
+                actionKey={productActionKey(product.id, "addColor")}
+                saveStatus={saveStatus}
+                idleLabel="Add color"
+                savingLabel="Adding…"
+                savedLabel="Color added"
+                variant="primary"
+                size="sm"
+                onClick={() => handleAddColor(product.id)}
+              />
+            </div>
           </div>
         ) : (
           <button
@@ -734,7 +1255,7 @@ export default function AdminProductsEditor() {
   );
 
   return (
-    <div className="flex-1 space-y-6 p-6 lg:p-8">
+    <div className={adminMainContent}>
       <div className={adminNotice}>
         Products save to Firestore at{" "}
         <code className="text-xs">sites/{SITE_ID}/products/{"{productId}"}</code>. New
@@ -759,7 +1280,7 @@ export default function AdminProductsEditor() {
 
       <section className={`${adminCard} space-y-4 p-6`}>
         <h2 className={adminSectionTitle}>Create product</h2>
-        <form className="space-y-4" onSubmit={(event) => void handleCreateProduct(event)}>
+        <form id="create-product-form" className="space-y-4" onSubmit={handleCreateProduct}>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className={adminLabel}>Brand</label>
@@ -810,6 +1331,76 @@ export default function AdminProductsEditor() {
             <label className={adminLabel}>Description</label>
             <textarea className={adminInput} rows={3} value={description} onChange={(e) => setDescription(e.target.value)} required />
           </div>
+          <div className="border-t border-slate-200 pt-4 admin-dark:border-zinc-700">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className={adminSectionTitle}>Product specs</h3>
+              {isSt550StyleCode(styleCode) && (
+                <button
+                  type="button"
+                  onClick={applySt550DefaultsToCreateForm}
+                  className="text-xs font-medium text-amber-700 admin-dark:text-amber-400"
+                >
+                  Apply ST550 defaults
+                </button>
+              )}
+            </div>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className={adminLabel}>Material</label>
+                <input
+                  className={adminInput}
+                  value={material}
+                  onChange={(e) => setMaterial(e.target.value)}
+                  placeholder="100% polyester interlock"
+                />
+              </div>
+              <div>
+                <label className={adminLabel}>Fabric weight</label>
+                <input
+                  className={adminInput}
+                  value={fabricWeight}
+                  onChange={(e) => setFabricWeight(e.target.value)}
+                  placeholder="3.8 oz"
+                />
+              </div>
+              <div>
+                <label className={adminLabel}>Fit</label>
+                <input
+                  className={adminInput}
+                  value={fit}
+                  onChange={(e) => setFit(e.target.value)}
+                  placeholder="Adult unisex"
+                />
+              </div>
+              <div>
+                <label className={adminLabel}>Decoration methods</label>
+                <input
+                  className={adminInput}
+                  value={decorationMethods}
+                  onChange={(e) => setDecorationMethods(e.target.value)}
+                  placeholder="Embroidery, DTF Heat Press"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className={adminLabel}>Features (one per line)</label>
+                <textarea
+                  className={adminInput}
+                  rows={4}
+                  value={features}
+                  onChange={(e) => setFeatures(e.target.value)}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className={adminLabel}>Care instructions</label>
+                <textarea
+                  className={adminInput}
+                  rows={2}
+                  value={careInstructions}
+                  onChange={(e) => setCareInstructions(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
           {brand.trim() && (name.trim() || styleCode.trim()) && (
             <p className={`text-sm ${adminBodyText}`}>
               Storage folder preview:{" "}
@@ -820,13 +1411,21 @@ export default function AdminProductsEditor() {
             <input type="checkbox" checked={isVisible} onChange={(e) => setIsVisible(e.target.checked)} />
             Visible on public catalog
           </label>
-          <button
-            type="submit"
-            disabled={creating}
-            className={creating ? adminButtonDisabled : "rounded-lg bg-amber-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-800 admin-dark:bg-amber-600"}
-          >
-            {creating ? "Creating…" : "Create product"}
-          </button>
+          <div className="flex flex-col items-start gap-2">
+            <AdminSaveButton
+              actionKey="create:product"
+              saveStatus={saveStatus}
+              idleLabel="Create product"
+              savingLabel="Creating…"
+              savedLabel="Created"
+              variant="primary"
+              size="md"
+              onClick={() => {
+                const form = document.getElementById("create-product-form") as HTMLFormElement | null;
+                form?.requestSubmit();
+              }}
+            />
+          </div>
         </form>
       </section>
 
@@ -883,6 +1482,33 @@ export default function AdminProductsEditor() {
               ))
             : filteredProducts.map((product) => renderProductCard(product))}
         </div>
+      )}
+
+      {visualCalibrationContext && (
+        <ProductCalibrationEditor
+          key={`${visualCalibrationContext.product.id}-${visualCalibrationContext.color.id}-${visualCalibrationContext.mode}`}
+          open
+          imageUrl={visualCalibrationContext.color.frontImageUrl!}
+          colorName={
+            visualCalibrationContext.mode === "product-default"
+              ? `${visualCalibrationContext.product.name} (product default)`
+              : visualCalibrationContext.color.name
+          }
+          productCategory={visualCalibrationContext.product.category}
+          initialCalibration={visualCalibrationContext.initialCalibration}
+          saveActionKey={
+            visualCalibrationContext.mode === "product-default"
+              ? productActionKey(visualCalibrationContext.product.id, "visualCalibration")
+              : colorActionKey(
+                  visualCalibrationContext.product.id,
+                  visualCalibrationContext.color.id,
+                  "visualCalibration",
+                )
+          }
+          saveStatus={saveStatus}
+          onSave={handleVisualCalibrationSave}
+          onCancel={() => setVisualCalibrationTarget(null)}
+        />
       )}
     </div>
   );

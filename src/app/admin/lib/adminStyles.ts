@@ -3,6 +3,14 @@
 export const adminShell =
   "min-h-screen bg-slate-50 text-slate-900 admin-dark:bg-zinc-950 admin-dark:text-zinc-100";
 
+export const adminMainContent = "flex-1 space-y-6 p-6 lg:p-8";
+
+export const adminColorCard =
+  "rounded-lg border border-slate-200 bg-slate-50/80 p-3 admin-dark:border-zinc-700 admin-dark:bg-zinc-900/60";
+
+export const adminModal =
+  "max-h-[95vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-xl admin-dark:border-zinc-700 admin-dark:bg-zinc-900 sm:p-6";
+
 export const adminSidebar =
   "flex w-full flex-col border-b border-slate-200 bg-white admin-dark:border-zinc-800 admin-dark:bg-zinc-950 lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r";
 
@@ -69,6 +77,18 @@ export const adminButtonOutlineDisabled =
 export const adminButtonSmallDisabled =
   "cursor-not-allowed rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-400 admin-dark:border-zinc-700 admin-dark:text-zinc-500";
 
+export const adminSaveSuccess =
+  "text-xs font-medium text-emerald-700 admin-dark:text-emerald-400";
+
+export const adminSaveError =
+  "text-xs font-medium text-red-700 admin-dark:text-red-300";
+
+export const adminSaveSaving =
+  "text-xs font-medium text-slate-500 admin-dark:text-zinc-400";
+
+export const adminSaveMuted =
+  "text-xs text-slate-500 admin-dark:text-zinc-500";
+
 export const adminUploadZone =
   "rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center admin-dark:border-zinc-700 admin-dark:bg-zinc-900/50";
 
@@ -79,6 +99,10 @@ export const adminUploadIcon = "h-8 w-8 text-slate-500 admin-dark:text-zinc-500"
 
 export const adminGalleryThumb =
   "flex aspect-[4/3] items-center justify-center rounded-lg bg-slate-100 admin-dark:bg-zinc-800";
+
+/** Neutral light stage for accurate product color preview in light and dark admin themes. */
+export const adminImageStage =
+  "flex items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-[#f8fafc] p-2 admin-dark:border-zinc-600";
 
 export const adminGalleryThumbIcon = "h-10 w-10 text-slate-400 admin-dark:text-zinc-600";
 

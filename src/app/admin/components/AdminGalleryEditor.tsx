@@ -13,7 +13,6 @@ import { uploadGalleryImage } from "@/lib/firebase/storageRepository";
 import { siteContent } from "@/lib/siteContent";
 import {
   adminBodyText,
-  adminButtonDisabled,
   adminCard,
   adminCardValue,
   adminGalleryThumb,
@@ -23,6 +22,8 @@ import {
   adminNotice,
   adminSectionTitle,
 } from "../lib/adminStyles";
+import { useSaveStatus } from "../lib/useSaveStatus";
+import AdminSaveButton from "./AdminSaveButton";
 
 const SITE_ID = siteContent.siteId;
 
@@ -41,6 +42,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
 }
 
 export default function AdminGalleryEditor() {
+  const saveStatus = useSaveStatus();
   const fallbackItems = useMemo<FallbackGalleryItem[]>(
     () =>
       siteContent.gallery.items.map((item) => ({
@@ -55,13 +57,11 @@ export default function AdminGalleryEditor() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<GalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [busyItemId, setBusyItemId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,98 +111,90 @@ export default function AdminGalleryEditor() {
     }
   };
 
-  const handleUpload = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleUpload = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setStatusMessage(null);
     setErrorMessage(null);
 
     if (!selectedFile) {
-      setErrorMessage("Choose an image file to upload.");
+      saveStatus.setLocalError("gallery:upload", "Choose an image file to upload.");
       return;
     }
 
     if (!title.trim() || !category.trim()) {
-      setErrorMessage("Title and category are required.");
+      saveStatus.setLocalError("gallery:upload", "Title and category are required.");
       return;
     }
 
     const validationError = validateGalleryUploadFile(selectedFile);
     if (validationError) {
-      setErrorMessage(validationError);
+      saveStatus.setLocalError("gallery:upload", validationError);
       return;
     }
 
-    setUploading(true);
+    void saveStatus.runAction(
+      "gallery:upload",
+      async () => {
+        const upload = await uploadGalleryImage(
+          SITE_ID,
+          selectedFile,
+          selectedFile.type,
+        );
 
-    try {
-      const upload = await uploadGalleryImage(
-        SITE_ID,
-        selectedFile,
-        selectedFile.type,
-      );
+        const created = await createGalleryItem(SITE_ID, {
+          title: title.trim(),
+          category: category.trim(),
+          imageUrl: upload.url,
+          storagePath: upload.path,
+          isVisible: true,
+          sortOrder: Date.now(),
+        });
 
-      const created = await createGalleryItem(SITE_ID, {
-        title: title.trim(),
-        category: category.trim(),
-        imageUrl: upload.url,
-        storagePath: upload.path,
-        isVisible: true,
-        sortOrder: Date.now(),
-      });
-
-      setItems((current) =>
-        [...current, created].sort((a, b) => a.sortOrder - b.sortOrder),
-      );
-      setTitle("");
-      setCategory("");
-      setSelectedFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-      setStatusMessage("Gallery image uploaded.");
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error, "Unable to upload gallery image."));
-    } finally {
-      setUploading(false);
-    }
+        setItems((current) =>
+          [...current, created].sort((a, b) => a.sortOrder - b.sortOrder),
+        );
+        setTitle("");
+        setCategory("");
+        setSelectedFile(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+        setStatusMessage("Gallery image uploaded.");
+      },
+      { savedMessage: "Uploaded" },
+    );
   };
 
-  const handleToggleVisible = async (item: GalleryItem) => {
-    setBusyItemId(item.id);
-    setStatusMessage(null);
-    setErrorMessage(null);
-
-    try {
-      const updated = await updateGalleryItem(SITE_ID, item.id, {
-        isVisible: !item.isVisible,
-      });
-      setItems((current) =>
-        current.map((entry) => (entry.id === updated.id ? updated : entry)),
-      );
-      setStatusMessage(
-        updated.isVisible ? "Gallery item is now visible." : "Gallery item hidden.",
-      );
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error, "Unable to update gallery item."));
-    } finally {
-      setBusyItemId(null);
-    }
+  const handleToggleVisible = (item: GalleryItem) => {
+    void saveStatus.runAction(
+      `gallery:${item.id}:visibility`,
+      async () => {
+        const updated = await updateGalleryItem(SITE_ID, item.id, {
+          isVisible: !item.isVisible,
+        });
+        setItems((current) =>
+          current.map((entry) => (entry.id === updated.id ? updated : entry)),
+        );
+        setStatusMessage(
+          updated.isVisible ? "Gallery item is now visible." : "Gallery item hidden.",
+        );
+      },
+      {
+        savedMessage: item.isVisible ? "Hidden" : "Visible",
+      },
+    );
   };
 
-  const handleDelete = async (item: GalleryItem) => {
-    setBusyItemId(item.id);
-    setStatusMessage(null);
-    setErrorMessage(null);
-
-    try {
-      await deleteGalleryItem(SITE_ID, item.id);
-      setItems((current) => current.filter((entry) => entry.id !== item.id));
-      setStatusMessage("Gallery item deleted.");
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error, "Unable to delete gallery item."));
-    } finally {
-      setBusyItemId(null);
-    }
+  const handleDelete = (item: GalleryItem) => {
+    void saveStatus.runAction(
+      `gallery:${item.id}:delete`,
+      async () => {
+        await deleteGalleryItem(SITE_ID, item.id);
+        setItems((current) => current.filter((entry) => entry.id !== item.id));
+        setStatusMessage("Gallery item deleted.");
+      },
+      { savedMessage: "Deleted" },
+    );
   };
 
   const showingFallback = !loading && items.length === 0;
@@ -235,7 +227,7 @@ export default function AdminGalleryEditor() {
           Allowed formats: PNG, JPG, WebP. Maximum size: 10MB.
         </p>
 
-        <form className="mt-6 space-y-4" onSubmit={handleUpload}>
+        <form id="gallery-upload-form" className="mt-6 space-y-4" onSubmit={handleUpload}>
           <div>
             <label htmlFor="gallery-file" className={adminLabel}>
               Image file
@@ -246,7 +238,7 @@ export default function AdminGalleryEditor() {
               type="file"
               accept="image/png,image/jpeg,image/webp"
               onChange={handleFileChange}
-              disabled={uploading}
+              disabled={saveStatus.isSaving("gallery:upload")}
               className={adminInput}
             />
             {selectedFile && (
@@ -267,7 +259,7 @@ export default function AdminGalleryEditor() {
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder="Embroidered Polo"
-                disabled={uploading}
+                disabled={saveStatus.isSaving("gallery:upload")}
                 className={adminInput}
               />
             </div>
@@ -281,23 +273,25 @@ export default function AdminGalleryEditor() {
                 value={category}
                 onChange={(event) => setCategory(event.target.value)}
                 placeholder="Embroidery"
-                disabled={uploading}
+                disabled={saveStatus.isSaving("gallery:upload")}
                 className={adminInput}
               />
             </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={uploading}
-            className={
-              uploading
-                ? adminButtonDisabled
-                : "rounded-lg bg-amber-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 admin-dark:bg-amber-600 admin-dark:hover:bg-amber-500"
-            }
-          >
-            {uploading ? "Uploading…" : "Upload to gallery"}
-          </button>
+          <AdminSaveButton
+            actionKey="gallery:upload"
+            saveStatus={saveStatus}
+            idleLabel="Upload to gallery"
+            savingLabel="Uploading…"
+            savedLabel="Uploaded"
+            variant="primary"
+            size="md"
+            onClick={() => {
+              const form = document.getElementById("gallery-upload-form") as HTMLFormElement | null;
+              form?.requestSubmit();
+            }}
+          />
         </form>
       </section>
 
@@ -367,23 +361,27 @@ export default function AdminGalleryEditor() {
                 <p className="mt-2 text-xs text-slate-500 admin-dark:text-zinc-500">
                   {item.isVisible ? "Visible" : "Hidden"}
                 </p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={busyItemId === item.id}
-                    onClick={() => void handleToggleVisible(item)}
-                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 admin-dark:border-zinc-700 admin-dark:text-zinc-200 admin-dark:hover:bg-zinc-800"
-                  >
-                    {item.isVisible ? "Hide" : "Show"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busyItemId === item.id}
-                    onClick={() => void handleDelete(item)}
-                    className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 admin-dark:border-red-500/40 admin-dark:text-red-300 admin-dark:hover:bg-red-500/10"
-                  >
-                    Delete
-                  </button>
+                <div className="mt-4 flex flex-wrap items-start gap-2">
+                  <AdminSaveButton
+                    actionKey={`gallery:${item.id}:visibility`}
+                    saveStatus={saveStatus}
+                    idleLabel={item.isVisible ? "Hide" : "Show"}
+                    savingLabel="Saving…"
+                    savedLabel={item.isVisible ? "Hidden" : "Visible"}
+                    variant="outline"
+                    size="xs"
+                    onClick={() => handleToggleVisible(item)}
+                  />
+                  <AdminSaveButton
+                    actionKey={`gallery:${item.id}:delete`}
+                    saveStatus={saveStatus}
+                    idleLabel="Delete"
+                    savingLabel="Deleting…"
+                    savedLabel="Deleted"
+                    variant="danger"
+                    size="xs"
+                    onClick={() => handleDelete(item)}
+                  />
                 </div>
               </article>
             ))}

@@ -1,5 +1,6 @@
 import type { Placement } from "./logoPreview";
 import type { Product } from "./firebase/productRepository";
+import { getVisibleProductColors } from "./firebase/productRepository";
 import { formatProductDisplayName } from "./productSlugs";
 import {
   LOGO_PREVIEW_PRODUCTS,
@@ -29,7 +30,7 @@ function mapCategoryToService(category: string): string {
 }
 
 export function firestoreProductToPreviewProduct(product: Product): PreviewProduct {
-  const variants: ProductVariant[] = product.colors.map((color) => ({
+  const variants: ProductVariant[] = getVisibleProductColors(product).map((color) => ({
     id: color.id,
     label: color.name,
     colorName: color.name,
@@ -49,7 +50,15 @@ export function firestoreProductToPreviewProduct(product: Product): PreviewProdu
     sizes: product.sizes,
     brand: product.brand,
     category: product.category,
+    material: product.material,
+    fabricWeight: product.fabricWeight,
+    fit: product.fit,
+    careInstructions: product.careInstructions,
+    decorationMethods: product.decorationMethods,
+    features: product.features,
+    seoDescription: product.seoDescription,
     previewPhysicalWidthMm: product.previewPhysicalWidthMm,
+    defaultPreviewCalibration: product.defaultPreviewCalibration,
     source: "firestore",
   };
 }

@@ -1,6 +1,5 @@
 import AdminAuthProvider from "./components/AdminAuthProvider";
 import AdminThemeProvider from "./components/AdminThemeProvider";
-import "./admin-theme.css";
 
 export default function AdminLayout({
   children,

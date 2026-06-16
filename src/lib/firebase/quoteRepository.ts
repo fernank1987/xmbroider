@@ -11,7 +11,9 @@ import {
   type DocumentData,
   type Timestamp,
 } from "firebase/firestore";
+import { removeUndefinedDeep } from "./firestoreUtils";
 import { db, isFirebaseConfigured } from "./client";
+import type { PreviewCalibrationSource } from "../previewCalibration";
 
 const FIREBASE_DISABLED_MESSAGE =
   "Firebase is not configured. Add NEXT_PUBLIC_FIREBASE_* variables to .env.local.";
@@ -51,6 +53,10 @@ export type QuoteRequestPreviewData = {
   productPhysicalWidthMm: number | null;
   sizePresetLabel: string | null;
   previewCalibrationUsed: boolean | null;
+  previewCalibrationSource: PreviewCalibrationSource | null;
+  productBrand: string | null;
+  productMaterial: string | null;
+  decorationMethod: string | null;
   logoPositionX: number | null;
   logoPositionY: number | null;
   artworkUrl: string | null;
@@ -100,6 +106,10 @@ export type CreateQuoteRequestInput = {
     productPhysicalWidthMm: number;
     sizePresetLabel: string;
     previewCalibrationUsed?: boolean;
+    previewCalibrationSource?: PreviewCalibrationSource;
+    productBrand?: string | null;
+    productMaterial?: string | null;
+    decorationMethod?: string | null;
     logoPositionX: number;
     logoPositionY: number;
     artworkUrl: string;
@@ -155,6 +165,17 @@ function isQuoteRequestSource(value: string): value is QuoteRequestSource {
   return (QUOTE_REQUEST_SOURCES as readonly string[]).includes(value);
 }
 
+function readPreviewCalibrationSource(value: unknown): PreviewCalibrationSource | null {
+  if (
+    value === "custom-color" ||
+    value === "product-default" ||
+    value === "category-default"
+  ) {
+    return value;
+  }
+  return null;
+}
+
 function parseQuoteRequestPreviewData(data: DocumentData): QuoteRequestPreviewData {
   return {
     productId: readString(data.productId),
@@ -174,6 +195,10 @@ function parseQuoteRequestPreviewData(data: DocumentData): QuoteRequestPreviewDa
     sizePresetLabel: readString(data.sizePresetLabel),
     previewCalibrationUsed:
       typeof data.previewCalibrationUsed === "boolean" ? data.previewCalibrationUsed : null,
+    previewCalibrationSource: readPreviewCalibrationSource(data.previewCalibrationSource),
+    productBrand: readString(data.productBrand),
+    productMaterial: readString(data.productMaterial),
+    decorationMethod: readString(data.decorationMethod),
     logoPositionX: readNumber(data.logoPositionX),
     logoPositionY: readNumber(data.logoPositionY),
     artworkUrl: readString(data.artworkUrl),
@@ -287,6 +312,10 @@ function buildQuoteRequestWritePayload(
     payload.productPhysicalWidthMm = input.preview.productPhysicalWidthMm;
     payload.sizePresetLabel = input.preview.sizePresetLabel;
     payload.previewCalibrationUsed = input.preview.previewCalibrationUsed ?? false;
+    payload.previewCalibrationSource = input.preview.previewCalibrationSource ?? null;
+    payload.productBrand = input.preview.productBrand ?? null;
+    payload.productMaterial = input.preview.productMaterial ?? null;
+    payload.decorationMethod = input.preview.decorationMethod ?? null;
     payload.logoPositionX = input.preview.logoPositionX;
     payload.logoPositionY = input.preview.logoPositionY;
     payload.artworkUrl = input.preview.artworkUrl;
@@ -296,6 +325,10 @@ function buildQuoteRequestWritePayload(
   }
 
   return payload;
+}
+
+function sanitizeQuoteWritePayload(payload: Record<string, unknown>): Record<string, unknown> {
+  return removeUndefinedDeep(payload, { path: "quoteRequests" }) as Record<string, unknown>;
 }
 
 /**
@@ -318,7 +351,7 @@ export async function createQuoteRequest(
   const quoteRequestId = options?.quoteRequestId ?? generateQuoteRequestId(siteId);
   const docRef = getQuoteRequestDocRef(siteId, quoteRequestId);
 
-  await setDoc(docRef, buildQuoteRequestWritePayload(siteId, quoteRequestId, input));
+  await setDoc(docRef, sanitizeQuoteWritePayload(buildQuoteRequestWritePayload(siteId, quoteRequestId, input)));
 
   const saved = await getDoc(docRef);
   const parsed = saved.exists() ? parseQuoteRequest(saved.id, saved.data()) : null;

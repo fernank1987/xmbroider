@@ -50,6 +50,8 @@ export function persistAdminTheme(theme: AdminTheme) {
 }
 
 export function toggleAdminTheme() {
-  const currentTheme = getAdminThemeSnapshot();
-  persistAdminTheme(currentTheme === "light" ? "dark" : "light");
+  if (!themeInitialized && typeof window !== "undefined") {
+    syncAdminThemeFromStorage();
+  }
+  persistAdminTheme(activeTheme === "light" ? "dark" : "light");
 }

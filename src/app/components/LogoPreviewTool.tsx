@@ -48,6 +48,7 @@ import {
   logoWidthMmToContainerWidthPercent,
   MOCKUP_CONTAINER_ASPECT,
   resolvePreviewCalibration,
+  type PreviewCalibrationSource,
 } from "@/lib/previewCalibration";
 import { siteContent } from "@/lib/siteContent";
 
@@ -115,6 +116,7 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
   const [productId, setProductId] = useState(initialProductId ?? DEFAULT_PRODUCT.id);
   const [variantId, setVariantId] = useState(DEFAULT_VARIANT.id);
   const [selectedSize, setSelectedSize] = useState("");
+  const [decorationMethod, setDecorationMethod] = useState("");
   const [placement, setPlacement] = useState<Placement>(DEFAULT_PLACEMENT);
   const [logoPositionX, setLogoPositionX] = useState(INITIAL_GARMENT_PLACEMENT.x);
   const [logoPositionY, setLogoPositionY] = useState(INITIAL_GARMENT_PLACEMENT.y);
@@ -150,6 +152,7 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
     () => resolvePreviewCalibration(selectedVariant, selectedProduct, placement),
     [selectedVariant, selectedProduct, placement],
   );
+  const previewCalibrationSource: PreviewCalibrationSource = activeCalibration.source;
   const previewCalibrationUsed = hasCustomPreviewCalibration(selectedVariant);
   const productPhysicalWidthMm = activeCalibration.physicalWidthMm;
   const logoSizePercent = useMemo(
@@ -190,6 +193,7 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
     () => getLogoSizePresetsForPlacement(placement),
     [placement],
   );
+  const decorationOptions = selectedProduct.decorationMethods ?? [];
 
   const applyPlacementPreset = (nextPlacement: Placement) => {
     setPlacement(nextPlacement);
@@ -226,6 +230,7 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
           setProductId(initial.id);
           setVariantId(getDefaultVariant(initial).id);
           setSelectedSize(initial.sizes?.[0] ?? "");
+          setDecorationMethod(initial.decorationMethods?.[0] ?? "");
           setQuoteFields((current) => ({
             ...current,
             serviceNeeded: initial.defaultService,
@@ -269,6 +274,7 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
     setProductId(product.id);
     setVariantId(defaultVariant.id);
     setSelectedSize(product.sizes?.[0] ?? "");
+    setDecorationMethod(product.decorationMethods?.[0] ?? "");
     applyPlacementPreset(product.placements[0] ?? DEFAULT_PLACEMENT);
     setQuoteFields((current) => ({
       ...current,
@@ -294,6 +300,7 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
     setProductId(product.id);
     setVariantId(getDefaultVariant(product).id);
     setSelectedSize(product.sizes?.[0] ?? "");
+    setDecorationMethod(product.decorationMethods?.[0] ?? "");
     applyPlacementPreset(product.placements[0] ?? DEFAULT_PLACEMENT);
     setQuoteFields({
       ...emptyQuoteFields,
@@ -435,6 +442,10 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
             productPhysicalWidthMm,
             sizePresetLabel,
             previewCalibrationUsed,
+            previewCalibrationSource,
+            productBrand: selectedProduct.brand ?? null,
+            productMaterial: selectedProduct.material ?? null,
+            decorationMethod: decorationMethod.trim() || null,
             logoPositionX,
             logoPositionY,
             artworkUrl: artworkUpload.url,
@@ -570,6 +581,30 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
                   </select>
                 </div>
               )}
+              {decorationOptions.length > 0 && (
+                <div className="mt-6">
+                  <label
+                    htmlFor="preview-decoration"
+                    className="block text-sm font-medium text-foreground"
+                  >
+                    Decoration method
+                  </label>
+                  <select
+                    id="preview-decoration"
+                    value={decorationMethod}
+                    disabled={submitting}
+                    onChange={(event) => setDecorationMethod(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                  >
+                    <option value="">Select decoration (optional)</option>
+                    {decorationOptions.map((method) => (
+                      <option key={method} value={method}>
+                        {method}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -626,7 +661,7 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
 
           <div
             ref={mockupRef}
-            className="relative mt-5 aspect-[4/3] overflow-hidden rounded-xl border border-border bg-background"
+            className="relative mt-5 aspect-[4/3] isolate overflow-hidden rounded-xl border border-slate-200 bg-[#f8fafc] [color-scheme:light]"
             onPointerMove={(event) => {
               if (dragging) {
                 updatePositionFromPointer(event.clientX, event.clientY);
@@ -659,10 +694,10 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
                   height: "auto",
                   transform: "translate(-50%, -50%)",
                 }}
-                className="absolute cursor-move touch-none select-none object-contain"
+                className="absolute cursor-move touch-none select-none object-contain opacity-100 [mix-blend-mode:normal]"
               />
             ) : (
-              <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-muted">
+              <div className="absolute inset-0 flex items-center justify-center bg-[#f8fafc] px-6 text-center text-sm text-slate-600">
                 Upload artwork to position it on the mockup.
               </div>
             )}

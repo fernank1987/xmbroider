@@ -36,10 +36,22 @@ export const GARMENT_PLACEMENT_PRESETS: Record<Placement, { x: number; y: number
 
 export const MOCKUP_CONTAINER_ASPECT = 4 / 3;
 
-export type CalibrationSource = "custom" | "default-apparel" | "default-hat";
+export type PreviewCalibrationSource =
+  | "custom-color"
+  | "product-default"
+  | "category-default";
+
+/** @deprecated Use PreviewCalibrationSource */
+export type CalibrationSource = PreviewCalibrationSource;
 
 export type ResolvedPreviewCalibration = PreviewCalibration & {
-  source: CalibrationSource;
+  source: PreviewCalibrationSource;
+};
+
+export const PREVIEW_CALIBRATION_SOURCE_LABELS: Record<PreviewCalibrationSource, string> = {
+  "custom-color": "Custom color calibration",
+  "product-default": "Product default calibration",
+  "category-default": "Category default calibration",
 };
 
 function isHatContext(product: PreviewProduct, placement?: Placement): boolean {
@@ -50,20 +62,45 @@ function isHatContext(product: PreviewProduct, placement?: Placement): boolean {
   return category.includes("hat") || category.includes("cap");
 }
 
+export function getPreviewCalibrationSource(
+  variant: ProductVariant,
+  product: PreviewProduct,
+): PreviewCalibrationSource {
+  if (variant.previewCalibration) {
+    return "custom-color";
+  }
+  if (product.defaultPreviewCalibration) {
+    return "product-default";
+  }
+  return "category-default";
+}
+
+export function resolveEffectivePreviewCalibration(
+  variant: ProductVariant,
+  product: PreviewProduct,
+  placement?: Placement,
+): PreviewCalibration {
+  if (variant.previewCalibration) {
+    return variant.previewCalibration;
+  }
+  if (product.defaultPreviewCalibration) {
+    return product.defaultPreviewCalibration;
+  }
+  if (isHatContext(product, placement)) {
+    return DEFAULT_HAT_CALIBRATION;
+  }
+  return DEFAULT_APPAREL_CALIBRATION;
+}
+
 export function resolvePreviewCalibration(
   variant: ProductVariant,
   product: PreviewProduct,
   placement?: Placement,
 ): ResolvedPreviewCalibration {
-  if (variant.previewCalibration) {
-    return { ...variant.previewCalibration, source: "custom" };
-  }
-
-  if (isHatContext(product, placement)) {
-    return { ...DEFAULT_HAT_CALIBRATION, source: "default-hat" };
-  }
-
-  return { ...DEFAULT_APPAREL_CALIBRATION, source: "default-apparel" };
+  return {
+    ...resolveEffectivePreviewCalibration(variant, product, placement),
+    source: getPreviewCalibrationSource(variant, product),
+  };
 }
 
 export function hasCustomPreviewCalibration(variant: ProductVariant): boolean {
@@ -227,14 +264,56 @@ export function calibrationFromPercents(
   physicalWidthMm: number,
   physicalHeightMm?: number | null,
 ): PreviewCalibration {
-  return {
-    garmentBounds: {
+  const calibration: PreviewCalibration = {
+    garmentBounds: clampGarmentBounds({
       x: xPercent / 100,
       y: yPercent / 100,
       width: widthPercent / 100,
       height: heightPercent / 100,
-    },
+    }),
     physicalWidthMm,
-    physicalHeightMm: physicalHeightMm ?? undefined,
   };
+  if (typeof physicalHeightMm === "number") {
+    calibration.physicalHeightMm = physicalHeightMm;
+  }
+  return calibration;
+}
+
+export const MIN_GARMENT_BOUND_SIZE = 0.05;
+
+export function clampGarmentBounds(bounds: GarmentBounds): GarmentBounds {
+  const width = clamp(bounds.width, MIN_GARMENT_BOUND_SIZE, 1);
+  const height = clamp(bounds.height, MIN_GARMENT_BOUND_SIZE, 1);
+  const x = clamp(bounds.x, 0, 1 - width);
+  const y = clamp(bounds.y, 0, 1 - height);
+  return { x, y, width, height };
+}
+
+export function getContainedImageRect(
+  containerWidth: number,
+  containerHeight: number,
+  imageAspect: number,
+): { x: number; y: number; width: number; height: number } {
+  if (containerWidth <= 0 || containerHeight <= 0 || imageAspect <= 0) {
+    return { x: 0, y: 0, width: containerWidth, height: containerHeight };
+  }
+
+  const containerAspect = containerWidth / containerHeight;
+  if (imageAspect > containerAspect) {
+    const width = containerWidth;
+    const height = containerWidth / imageAspect;
+    return { x: 0, y: (containerHeight - height) / 2, width, height };
+  }
+
+  const height = containerHeight;
+  const width = containerHeight * imageAspect;
+  return { x: (containerWidth - width) / 2, y: 0, width, height };
+}
+
+export function getDefaultCalibrationForCategory(category: string): PreviewCalibration {
+  const normalized = category.toLowerCase();
+  if (normalized.includes("hat") || normalized.includes("cap")) {
+    return DEFAULT_HAT_CALIBRATION;
+  }
+  return DEFAULT_APPAREL_CALIBRATION;
 }

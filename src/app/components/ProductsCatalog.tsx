@@ -63,19 +63,33 @@ function ProductCard({ product }: { product: Product }) {
           <p className="text-xs font-semibold uppercase tracking-wider text-accent">
             {product.brand}
           </p>
-          <h2 className="mt-1 text-lg font-semibold text-foreground">{displayName}</h2>
+          <h2 className="mt-1 text-lg font-semibold text-foreground">
+            <Link href={`/products/${product.id}`} className="hover:text-accent">
+              {displayName}
+            </Link>
+          </h2>
           <p className="mt-1 text-sm text-muted">{product.category}</p>
+          {product.material && (
+            <p className="mt-1 text-sm text-muted">{product.material}</p>
+          )}
           {priceLabel && (
             <p className="mt-1 text-sm font-medium text-foreground">{priceLabel}</p>
           )}
         </div>
-        <p className="line-clamp-3 text-sm text-muted">{product.description}</p>
-        <Link
-          href={`/preview?productId=${product.id}`}
-          className="inline-flex w-full items-center justify-center rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover sm:w-auto"
-        >
-          Preview with logo
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/products/${product.id}`}
+            className="inline-flex items-center justify-center rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-foreground/5"
+          >
+            View details
+          </Link>
+          <Link
+            href={`/preview?productId=${product.id}`}
+            className="inline-flex items-center justify-center rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
+          >
+            Preview with logo
+          </Link>
+        </div>
       </div>
     </article>
   );

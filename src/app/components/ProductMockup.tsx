@@ -87,7 +87,7 @@ export default function ProductMockup({ variant, onImageLoad }: ProductMockupPro
       alt={`${variant.colorName} product mockup`}
       onError={handleImageError}
       onLoad={handleImageLoad}
-      className="h-full w-full object-contain"
+      className="h-full w-full object-contain opacity-100 [mix-blend-mode:normal]"
     />
   );
 }

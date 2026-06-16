@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 import { deleteProductImage } from "./storageRepository";
 import { db, isFirebaseConfigured } from "./client";
+import { removeUndefinedDeep } from "./firestoreUtils";
 import {
   generateProductSlug,
   slugifyBrand,
@@ -29,6 +30,8 @@ export type ProductColor = {
   id: string;
   name: string;
   hex: string | null;
+  sortOrder: number;
+  isVisible: boolean;
   frontImageUrl: string | null;
   frontImageStoragePath: string | null;
   backImageUrl: string | null;
@@ -45,9 +48,17 @@ export type Product = {
   styleCode: string | null;
   category: string;
   description: string;
+  seoDescription: string | null;
+  material: string | null;
+  fabricWeight: string | null;
+  fit: string | null;
+  careInstructions: string | null;
+  decorationMethods: string[];
+  features: string[];
   basePriceMin: number | null;
   basePriceMax: number | null;
   previewPhysicalWidthMm: number | null;
+  defaultPreviewCalibration: PreviewCalibration | null;
   sizes: string[];
   colors: ProductColor[];
   isVisible: boolean;
@@ -62,6 +73,13 @@ export type CreateProductInput = {
   styleCode?: string | null;
   category: string;
   description: string;
+  seoDescription?: string | null;
+  material?: string | null;
+  fabricWeight?: string | null;
+  fit?: string | null;
+  careInstructions?: string | null;
+  decorationMethods?: string[];
+  features?: string[];
   basePriceMin?: number | null;
   basePriceMax?: number | null;
   sizes?: string[];
@@ -79,9 +97,17 @@ export type UpdateProductInput = Partial<
     | "styleCode"
     | "category"
     | "description"
+    | "seoDescription"
+    | "material"
+    | "fabricWeight"
+    | "fit"
+    | "careInstructions"
+    | "decorationMethods"
+    | "features"
     | "basePriceMin"
     | "basePriceMax"
     | "previewPhysicalWidthMm"
+    | "defaultPreviewCalibration"
     | "sizes"
     | "colors"
     | "isVisible"
@@ -161,11 +187,21 @@ function parsePreviewCalibration(value: unknown): PreviewCalibration | null {
 
   const physicalHeightMm = readNumber(data.physicalHeightMm);
 
-  return {
+  const calibration: PreviewCalibration = {
     garmentBounds: { x, y, width, height },
     physicalWidthMm,
-    physicalHeightMm: physicalHeightMm ?? undefined,
   };
+  if (physicalHeightMm !== null) {
+    calibration.physicalHeightMm = physicalHeightMm;
+  }
+  return calibration;
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === "string" && item.length > 0);
 }
 
 function parseProductColor(value: unknown): ProductColor | null {
@@ -184,6 +220,8 @@ function parseProductColor(value: unknown): ProductColor | null {
     id,
     name,
     hex: readString(data.hex),
+    sortOrder: readNumber(data.sortOrder) ?? 0,
+    isVisible: readBoolean(data.isVisible, true),
     frontImageUrl: readString(data.frontImageUrl),
     frontImageStoragePath: readString(data.frontImageStoragePath),
     backImageUrl: readString(data.backImageUrl),
@@ -222,9 +260,18 @@ function parseProduct(id: string, data: DocumentData): Product | null {
     styleCode: readString(data.styleCode) ?? readString(data.modelNumber),
     category,
     description,
+    seoDescription: readString(data.seoDescription),
+    material: readString(data.material),
+    fabricWeight: readString(data.fabricWeight),
+    fit: readString(data.fit),
+    careInstructions: readString(data.careInstructions),
+    decorationMethods: readStringArray(data.decorationMethods),
+    features: readStringArray(data.features),
     basePriceMin: readNumber(data.basePriceMin),
     basePriceMax: readNumber(data.basePriceMax),
     previewPhysicalWidthMm: readNumber(data.previewPhysicalWidthMm),
+    defaultPreviewCalibration:
+      parsePreviewCalibration(data.defaultPreviewCalibration) ?? null,
     sizes,
     colors,
     isVisible: readBoolean(data.isVisible, true),
@@ -239,6 +286,112 @@ function parseSizesInput(value: string): string[] {
     .split(",")
     .map((size) => size.trim())
     .filter(Boolean);
+}
+
+function serializePreviewCalibrationForWrite(
+  calibration: PreviewCalibration,
+): Record<string, unknown> {
+  const record: Record<string, unknown> = {
+    garmentBounds: {
+      x: calibration.garmentBounds.x,
+      y: calibration.garmentBounds.y,
+      width: calibration.garmentBounds.width,
+      height: calibration.garmentBounds.height,
+    },
+    physicalWidthMm: calibration.physicalWidthMm,
+  };
+  if (typeof calibration.physicalHeightMm === "number") {
+    record.physicalHeightMm = calibration.physicalHeightMm;
+  }
+  return record;
+}
+
+function serializeOptionalString(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function serializeProductColorForWrite(color: ProductColor): Record<string, unknown> {
+  const record: Record<string, unknown> = {
+    id: color.id,
+    name: color.name.trim(),
+    sortOrder: color.sortOrder,
+    isVisible: color.isVisible,
+  };
+
+  const hex = serializeOptionalString(color.hex);
+  if (hex) {
+    record.hex = hex;
+  }
+  if (typeof color.frontImageUrl === "string" && color.frontImageUrl.length > 0) {
+    record.frontImageUrl = color.frontImageUrl;
+  }
+  if (typeof color.frontImageStoragePath === "string" && color.frontImageStoragePath.length > 0) {
+    record.frontImageStoragePath = color.frontImageStoragePath;
+  }
+  if (typeof color.backImageUrl === "string" && color.backImageUrl.length > 0) {
+    record.backImageUrl = color.backImageUrl;
+  }
+  if (typeof color.backImageStoragePath === "string" && color.backImageStoragePath.length > 0) {
+    record.backImageStoragePath = color.backImageStoragePath;
+  }
+  if (color.previewCalibration) {
+    record.previewCalibration = serializePreviewCalibrationForWrite(color.previewCalibration);
+  }
+
+  return removeUndefinedDeep(record, { path: `colors.${color.id}` }) as Record<string, unknown>;
+}
+
+function serializeOptionalProductString(value: string | null | undefined): string | null {
+  return serializeOptionalString(value);
+}
+
+function serializeStringArrayForWrite(items: string[] | undefined): string[] {
+  if (!items) {
+    return [];
+  }
+  return items.map((item) => item.trim()).filter(Boolean);
+}
+
+function summarizeProductWritePayload(payload: Record<string, unknown>): {
+  keys: string[];
+  specFields: Record<string, unknown>;
+} {
+  const keys: string[] = [];
+  const specFields: Record<string, unknown> = {};
+  const specKeys = new Set([
+    "material",
+    "fabricWeight",
+    "fit",
+    "careInstructions",
+    "decorationMethods",
+    "features",
+    "seoDescription",
+  ]);
+
+  for (const [key, value] of Object.entries(payload)) {
+    keys.push(key);
+    if (specKeys.has(key)) {
+      specFields[key] = value;
+      continue;
+    }
+    if (key === "colors" && Array.isArray(value)) {
+      keys[keys.length - 1] = `colors[${value.length}]`;
+    }
+  }
+
+  return { keys, specFields };
+}
+
+function logProductWritePayload(action: string, payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV === "development") {
+    const { keys, specFields } = summarizeProductWritePayload(payload);
+    console.log(`[productRepository] ${action} payload keys:`, keys);
+    console.log(`[productRepository] ${action} spec fields:`, specFields);
+  }
 }
 
 /** Lists all products for admin, sorted by sortOrder. */
@@ -305,7 +458,7 @@ export async function createProduct(
 
   const docRef = doc(getProductsCollectionRef(siteId));
 
-  await setDoc(docRef, {
+  const writePayload = removeUndefinedDeep({
     id: docRef.id,
     name,
     slug,
@@ -314,6 +467,13 @@ export async function createProduct(
     styleCode,
     category: input.category.trim(),
     description: input.description.trim(),
+    seoDescription: serializeOptionalProductString(input.seoDescription),
+    material: serializeOptionalProductString(input.material),
+    fabricWeight: serializeOptionalProductString(input.fabricWeight),
+    fit: serializeOptionalProductString(input.fit),
+    careInstructions: serializeOptionalProductString(input.careInstructions),
+    decorationMethods: serializeStringArrayForWrite(input.decorationMethods),
+    features: serializeStringArrayForWrite(input.features),
     basePriceMin: input.basePriceMin ?? null,
     basePriceMax: input.basePriceMax ?? null,
     sizes: input.sizes ?? [],
@@ -323,6 +483,9 @@ export async function createProduct(
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+
+  logProductWritePayload("createProduct", writePayload as Record<string, unknown>);
+  await setDoc(docRef, writePayload);
 
   const saved = await getDoc(docRef);
   const parsed = saved.exists() ? parseProduct(saved.id, saved.data()) : null;
@@ -377,6 +540,27 @@ export async function updateProduct(
   if (updates.description !== undefined) {
     payload.description = updates.description.trim();
   }
+  if (updates.seoDescription !== undefined) {
+    payload.seoDescription = serializeOptionalProductString(updates.seoDescription);
+  }
+  if (updates.material !== undefined) {
+    payload.material = serializeOptionalProductString(updates.material);
+  }
+  if (updates.fabricWeight !== undefined) {
+    payload.fabricWeight = serializeOptionalProductString(updates.fabricWeight);
+  }
+  if (updates.fit !== undefined) {
+    payload.fit = serializeOptionalProductString(updates.fit);
+  }
+  if (updates.careInstructions !== undefined) {
+    payload.careInstructions = serializeOptionalProductString(updates.careInstructions);
+  }
+  if (updates.decorationMethods !== undefined) {
+    payload.decorationMethods = serializeStringArrayForWrite(updates.decorationMethods);
+  }
+  if (updates.features !== undefined) {
+    payload.features = serializeStringArrayForWrite(updates.features);
+  }
   if (updates.basePriceMin !== undefined) {
     payload.basePriceMin = updates.basePriceMin;
   }
@@ -386,11 +570,16 @@ export async function updateProduct(
   if (updates.previewPhysicalWidthMm !== undefined) {
     payload.previewPhysicalWidthMm = updates.previewPhysicalWidthMm;
   }
+  if (updates.defaultPreviewCalibration !== undefined) {
+    payload.defaultPreviewCalibration = updates.defaultPreviewCalibration
+      ? serializePreviewCalibrationForWrite(updates.defaultPreviewCalibration)
+      : null;
+  }
   if (updates.sizes !== undefined) {
     payload.sizes = updates.sizes;
   }
   if (updates.colors !== undefined) {
-    payload.colors = updates.colors;
+    payload.colors = updates.colors.map(serializeProductColorForWrite);
   }
   if (updates.isVisible !== undefined) {
     payload.isVisible = updates.isVisible;
@@ -408,7 +597,15 @@ export async function updateProduct(
     payload.slug = generateProductSlug(nextStyleCode, nextName);
   }
 
-  await updateDoc(docRef, payload);
+  const sanitizedPayload = removeUndefinedDeep(payload, { path: `products.${productId}` });
+  logProductWritePayload("updateProduct", sanitizedPayload as Record<string, unknown>);
+
+  try {
+    await updateDoc(docRef, sanitizedPayload);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown Firestore error";
+    throw new Error(`Unable to save product: ${message}`);
+  }
 
   const saved = await getDoc(docRef);
   const parsed = saved.exists() ? parseProduct(saved.id, saved.data()) : null;
@@ -453,6 +650,36 @@ export function parseSizesFromForm(value: string): string[] {
   return parseSizesInput(value);
 }
 
+/** Builds a new color object with only defined Firestore-safe fields in app state. */
+export function createProductColorInput(name: string, hex?: string | null): ProductColor {
+  const trimmedName = name.trim();
+  const trimmedHex = hex?.trim();
+  return {
+    id: crypto.randomUUID().slice(0, 8),
+    name: trimmedName,
+    hex: trimmedHex || null,
+    sortOrder: Date.now(),
+    isVisible: true,
+    frontImageUrl: null,
+    frontImageStoragePath: null,
+    backImageUrl: null,
+    backImageStoragePath: null,
+    previewCalibration: null,
+  };
+}
+
+/** Colors visible on public catalog and preview (defaults to visible). */
+export function getVisibleProductColors(product: Product): ProductColor[] {
+  return product.colors.filter((color) => color.isVisible);
+}
+
+export function getProductCoverImageUrl(product: Product): string | null {
+  const firstColorWithImage = getVisibleProductColors(product).find(
+    (color) => color.frontImageUrl,
+  );
+  return firstColorWithImage?.frontImageUrl ?? null;
+}
+
 export function formatPriceRange(
   min: number | null,
   max: number | null,
@@ -467,9 +694,4 @@ export function formatPriceRange(
     return `Up to $${max.toFixed(2)}`;
   }
   return null;
-}
-
-export function getProductCoverImageUrl(product: Product): string | null {
-  const firstColorWithImage = product.colors.find((color) => color.frontImageUrl);
-  return firstColorWithImage?.frontImageUrl ?? null;
 }

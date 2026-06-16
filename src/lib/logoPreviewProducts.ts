@@ -11,7 +11,15 @@ export type PreviewProduct = {
   sizes?: string[];
   brand?: string;
   category?: string;
+  material?: string | null;
+  fabricWeight?: string | null;
+  fit?: string | null;
+  careInstructions?: string | null;
+  decorationMethods?: string[];
+  features?: string[];
+  seoDescription?: string | null;
   previewPhysicalWidthMm?: number | null;
+  defaultPreviewCalibration?: PreviewCalibration | null;
   source?: "firestore" | "fallback";
 };
 

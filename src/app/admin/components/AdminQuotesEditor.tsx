@@ -11,6 +11,7 @@ import {
 } from "@/lib/firebase/quoteRepository";
 import { PLACEMENT_LABELS, type Placement } from "@/lib/logoPreview";
 import { mmToInches } from "@/lib/logoSize";
+import { PREVIEW_CALIBRATION_SOURCE_LABELS } from "@/lib/previewCalibration";
 import { siteContent } from "@/lib/siteContent";
 import {
   adminBodyText,
@@ -31,6 +32,9 @@ import {
   adminTableHeadCell,
   adminTableWrap,
 } from "../lib/adminStyles";
+import type { SaveStatusApi } from "../lib/useSaveStatus";
+import { useSaveStatus } from "../lib/useSaveStatus";
+import SaveStatusMessage from "./SaveStatusMessage";
 
 const SITE_ID = siteContent.siteId;
 
@@ -114,6 +118,30 @@ function formatLogoDimensions(quote: QuoteRequest): string | null {
   return null;
 }
 
+function formatCalibrationInfo(quote: QuoteRequest): string | null {
+  if (quote.previewCalibrationSource) {
+    return PREVIEW_CALIBRATION_SOURCE_LABELS[quote.previewCalibrationSource];
+  }
+  if (quote.previewCalibrationUsed) {
+    return "Calibrated garment bounds";
+  }
+  return null;
+}
+
+function formatQuoteProductMeta(quote: QuoteRequest): string | null {
+  const parts: string[] = [];
+  if (quote.productBrand) {
+    parts.push(quote.productBrand);
+  }
+  if (quote.productMaterial) {
+    parts.push(quote.productMaterial);
+  }
+  if (quote.decorationMethod) {
+    parts.push(quote.decorationMethod);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
   if (quote.source !== "logo_preview_tool") {
     return (
@@ -165,10 +193,16 @@ function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
             <dd className={adminTableCellMuted}>{quote.productPhysicalWidthMm} mm</dd>
           </div>
         )}
-        {quote.previewCalibrationUsed && (
+        {formatQuoteProductMeta(quote) && (
+          <div>
+            <dt className={adminLabel}>Product details</dt>
+            <dd className={adminTableCellMuted}>{formatQuoteProductMeta(quote)}</dd>
+          </div>
+        )}
+        {formatCalibrationInfo(quote) && (
           <div>
             <dt className={adminLabel}>Preview calibration</dt>
-            <dd className={adminTableCellMuted}>Calibrated garment bounds</dd>
+            <dd className={adminTableCellMuted}>{formatCalibrationInfo(quote)}</dd>
           </div>
         )}
       </dl>
@@ -234,33 +268,51 @@ function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
 
 function QuoteStatusSelect({
   quote,
-  disabled,
+  saveStatus,
   onStatusChange,
 }: {
   quote: QuoteRequest;
-  disabled: boolean;
+  saveStatus: SaveStatusApi;
   onStatusChange: (quoteId: string, status: QuoteRequestStatus) => void;
 }) {
+  const actionKey = `quote:${quote.id}:status`;
+  const entry = saveStatus.getEntry(actionKey);
+  const disabled = saveStatus.isSaving(actionKey);
+
   return (
-    <select
-      value={quote.status}
-      disabled={disabled}
-      onChange={(event) =>
-        onStatusChange(quote.id, event.target.value as QuoteRequestStatus)
-      }
-      className={adminInput}
-      aria-label={`Status for ${quote.name}`}
-    >
-      {QUOTE_REQUEST_STATUSES.map((status) => (
-        <option key={status} value={status}>
-          {formatStatusLabel(status)}
-        </option>
-      ))}
-    </select>
+    <div className="space-y-1">
+      <select
+        value={quote.status}
+        disabled={disabled}
+        onChange={(event) =>
+          onStatusChange(quote.id, event.target.value as QuoteRequestStatus)
+        }
+        className={adminInput}
+        aria-label={`Status for ${quote.name}`}
+      >
+        {QUOTE_REQUEST_STATUSES.map((status) => (
+          <option key={status} value={status}>
+            {formatStatusLabel(status)}
+          </option>
+        ))}
+      </select>
+      {entry.status === "saving" && <SaveStatusMessage status="saving" message="Saving…" />}
+      {entry.status === "saved" && (
+        <SaveStatusMessage status="saved" message={entry.message ?? "Saved"} />
+      )}
+      {entry.status === "error" && entry.message && (
+        <SaveStatusMessage
+          status="error"
+          message={entry.message}
+          onDismiss={() => saveStatus.dismissError(actionKey)}
+        />
+      )}
+    </div>
   );
 }
 
 export default function AdminQuotesEditor() {
+  const saveStatus = useSaveStatus();
   const serviceLabels = useMemo(
     () =>
       Object.fromEntries(
@@ -276,7 +328,6 @@ export default function AdminQuotesEditor() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [busyQuoteId, setBusyQuoteId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -308,22 +359,20 @@ export default function AdminQuotesEditor() {
     };
   }, []);
 
-  const handleStatusChange = async (quoteId: string, status: QuoteRequestStatus) => {
-    setBusyQuoteId(quoteId);
-    setStatusMessage(null);
-    setErrorMessage(null);
-
-    try {
-      const updated = await updateQuoteRequestStatus(SITE_ID, quoteId, status);
-      setQuotes((current) =>
-        current.map((quote) => (quote.id === quoteId ? updated : quote)),
-      );
-      setStatusMessage("Quote status updated.");
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error, "Unable to update quote status."));
-    } finally {
-      setBusyQuoteId(null);
-    }
+  const handleStatusChange = (quoteId: string, status: QuoteRequestStatus) => {
+    void saveStatus.runAction(
+      `quote:${quoteId}:status`,
+      async () => {
+        setStatusMessage(null);
+        setErrorMessage(null);
+        const updated = await updateQuoteRequestStatus(SITE_ID, quoteId, status);
+        setQuotes((current) =>
+          current.map((quote) => (quote.id === quoteId ? updated : quote)),
+        );
+        setStatusMessage("Quote status updated.");
+      },
+      { savedMessage: "Saved" },
+    );
   };
 
   return (
@@ -394,8 +443,8 @@ export default function AdminQuotesEditor() {
                     <label className={adminLabel}>Status</label>
                     <QuoteStatusSelect
                       quote={quote}
-                      disabled={busyQuoteId === quote.id}
-                      onStatusChange={(quoteId, status) => void handleStatusChange(quoteId, status)}
+                      saveStatus={saveStatus}
+                      onStatusChange={handleStatusChange}
                     />
                   </div>
                 </div>
@@ -478,10 +527,8 @@ export default function AdminQuotesEditor() {
                     <td className="min-w-[160px] px-4 py-4 align-top">
                       <QuoteStatusSelect
                         quote={quote}
-                        disabled={busyQuoteId === quote.id}
-                        onStatusChange={(quoteId, status) =>
-                          void handleStatusChange(quoteId, status)
-                        }
+                        saveStatus={saveStatus}
+                        onStatusChange={handleStatusChange}
                       />
                     </td>
                     <td className={`px-4 py-4 align-top ${adminTableCellSubtle}`}>

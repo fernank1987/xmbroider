@@ -16,47 +16,35 @@ import {
 import { siteContent, type EditableSiteContent } from "@/lib/siteContent";
 import {
   adminBodyText,
-  adminButtonDisabled,
   adminCard,
   adminInput,
   adminLabel,
   adminNotice,
   adminSectionTitle,
 } from "../lib/adminStyles";
+import { useSaveStatus } from "../lib/useSaveStatus";
+import AdminSaveButton from "./AdminSaveButton";
 
 const SITE_ID = siteContent.siteId;
 
-function getSaveErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  return "Unable to save site content. Please try again.";
-}
-
-function getUploadErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  return "Unable to upload brand logo. Please try again.";
-}
-
 export default function AdminSiteContentEditor() {
+  const saveStatus = useSaveStatus();
   const fallbackContent = useMemo(
     () => getFallbackEditableSiteContent(SITE_ID),
     [],
   );
   const [form, setForm] = useState<EditableSiteContent>(fallbackContent);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [source, setSource] = useState<"fallback" | "firestore">("fallback");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [uploadingLogo, setUploadingLogo] = useState(false);
-  const [removingLogo, setRemovingLogo] = useState(false);
   const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null);
   const logoFileInputRef = useRef<HTMLInputElement>(null);
   const hasCurrentLogo = Boolean(form.brand.logoUrl);
-  const logoBusy = uploadingLogo || removingLogo || saving;
+  const logoBusy =
+    saveStatus.isSaving("site:logoUpload") ||
+    saveStatus.isSaving("site:logoRemove") ||
+    saveStatus.isSaving("site:save");
 
   useEffect(() => {
     let cancelled = false;
@@ -160,59 +148,61 @@ export default function AdminSiteContentEditor() {
     }
   };
 
-  const handleLogoUpload = async () => {
+  const handleLogoUpload = () => {
     if (!selectedLogoFile) {
-      setErrorMessage("Choose a logo file first.");
+      saveStatus.setLocalError("site:logoUpload", "Choose a logo file first.");
       return;
     }
 
-    const validationError = await validateBrandLogoFileContents(selectedLogoFile);
-    if (validationError) {
-      setErrorMessage(validationError);
-      return;
-    }
-
-    setUploadingLogo(true);
-    setStatusMessage(null);
-    setErrorMessage(null);
-
-    try {
-      const oldStoragePath = form.brand.logoStoragePath;
-      const upload = await uploadBrandLogo(SITE_ID, selectedLogoFile);
-
-      if (oldStoragePath && oldStoragePath !== upload.path) {
-        try {
-          await deleteBrandLogo(oldStoragePath);
-        } catch {
-          // Best-effort cleanup when replacing an existing logo.
-        }
+    void (async () => {
+      const validationError = await validateBrandLogoFileContents(selectedLogoFile);
+      if (validationError) {
+        saveStatus.setLocalError("site:logoUpload", validationError);
+        return;
       }
 
-      const updatedForm: EditableSiteContent = {
-        ...form,
-        brand: {
-          ...form.brand,
-          logoUrl: upload.url,
-          logoStoragePath: upload.path,
+      await saveStatus.runAction(
+        "site:logoUpload",
+        async () => {
+          setStatusMessage(null);
+          setErrorMessage(null);
+          const oldStoragePath = form.brand.logoStoragePath;
+          const upload = await uploadBrandLogo(SITE_ID, selectedLogoFile);
+
+          if (oldStoragePath && oldStoragePath !== upload.path) {
+            try {
+              await deleteBrandLogo(oldStoragePath);
+            } catch {
+              // Best-effort cleanup when replacing an existing logo.
+            }
+          }
+
+          const updatedForm: EditableSiteContent = {
+            ...form,
+            brand: {
+              ...form.brand,
+              logoUrl: upload.url,
+              logoStoragePath: upload.path,
+            },
+          };
+
+          setForm(updatedForm);
+          await saveSiteContentToFirestore(SITE_ID, updatedForm);
+          setSource("firestore");
+          setStatusMessage(hasCurrentLogo ? "Logo replaced and saved." : "Logo uploaded and saved.");
+          setSelectedLogoFile(null);
+          if (logoFileInputRef.current) {
+            logoFileInputRef.current.value = "";
+          }
         },
-      };
-
-      setForm(updatedForm);
-      await saveSiteContentToFirestore(SITE_ID, updatedForm);
-      setSource("firestore");
-      setStatusMessage(hasCurrentLogo ? "Logo replaced and saved." : "Logo uploaded and saved.");
-      setSelectedLogoFile(null);
-      if (logoFileInputRef.current) {
-        logoFileInputRef.current.value = "";
-      }
-    } catch (error) {
-      setErrorMessage(getUploadErrorMessage(error));
-    } finally {
-      setUploadingLogo(false);
-    }
+        {
+          savedMessage: hasCurrentLogo ? "Logo replaced" : "Logo uploaded",
+        },
+      );
+    })();
   };
 
-  const handleLogoRemove = async () => {
+  const handleLogoRemove = () => {
     if (!form.brand.logoUrl) {
       return;
     }
@@ -224,41 +214,37 @@ export default function AdminSiteContentEditor() {
       return;
     }
 
-    setRemovingLogo(true);
-    setStatusMessage(null);
-    setErrorMessage(null);
-
-    try {
-      const updatedForm = await removeBrandLogoFromFirestore(SITE_ID, form);
-      setForm(updatedForm);
-      setSource("firestore");
-      setSelectedLogoFile(null);
-      if (logoFileInputRef.current) {
-        logoFileInputRef.current.value = "";
-      }
-      setStatusMessage("Logo removed.");
-    } catch (error) {
-      setErrorMessage(getUploadErrorMessage(error));
-    } finally {
-      setRemovingLogo(false);
-    }
+    void saveStatus.runAction(
+      "site:logoRemove",
+      async () => {
+        setStatusMessage(null);
+        setErrorMessage(null);
+        const updatedForm = await removeBrandLogoFromFirestore(SITE_ID, form);
+        setForm(updatedForm);
+        setSource("firestore");
+        setSelectedLogoFile(null);
+        if (logoFileInputRef.current) {
+          logoFileInputRef.current.value = "";
+        }
+        setStatusMessage("Logo removed.");
+      },
+      { savedMessage: "Logo removed" },
+    );
   };
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setSaving(true);
-    setStatusMessage(null);
-    setErrorMessage(null);
-
-    try {
-      await saveSiteContentToFirestore(SITE_ID, form);
-      setSource("firestore");
-      setStatusMessage("Saved");
-    } catch (error) {
-      setErrorMessage(getSaveErrorMessage(error));
-    } finally {
-      setSaving(false);
-    }
+    void saveStatus.runAction(
+      "site:save",
+      async () => {
+        setStatusMessage(null);
+        setErrorMessage(null);
+        await saveSiteContentToFirestore(SITE_ID, form);
+        setSource("firestore");
+        setStatusMessage("Saved");
+      },
+      { savedMessage: "Saved" },
+    );
   };
 
   return (
@@ -298,7 +284,7 @@ export default function AdminSiteContentEditor() {
             </div>
           )}
 
-          <form className="max-w-3xl space-y-8" onSubmit={handleSubmit}>
+          <form id="site-content-form" className="max-w-3xl space-y-8" onSubmit={handleSubmit}>
             <section className={`${adminCard} space-y-4 p-6`}>
               <h2 className={adminSectionTitle}>Brand</h2>
 
@@ -492,39 +478,30 @@ export default function AdminSiteContentEditor() {
                       </p>
                     </div>
 
-                    <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-                      <button
-                        type="button"
-                        disabled={logoBusy || !selectedLogoFile}
-                        onClick={() => void handleLogoUpload()}
-                        className={
-                          logoBusy || !selectedLogoFile
-                            ? adminButtonDisabled
-                            : "rounded-lg bg-amber-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 admin-dark:bg-amber-600 admin-dark:hover:bg-amber-500"
-                        }
-                      >
-                        {uploadingLogo
-                          ? hasCurrentLogo
-                            ? "Replacing logo…"
-                            : "Uploading logo…"
-                          : hasCurrentLogo
-                            ? "Replace logo"
-                            : "Upload logo"}
-                      </button>
+                    <div className="mt-4 flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap">
+                      <AdminSaveButton
+                        actionKey="site:logoUpload"
+                        saveStatus={saveStatus}
+                        idleLabel={hasCurrentLogo ? "Replace logo" : "Upload logo"}
+                        savingLabel={hasCurrentLogo ? "Replacing…" : "Uploading…"}
+                        savedLabel={hasCurrentLogo ? "Logo replaced" : "Logo uploaded"}
+                        variant="primary"
+                        size="md"
+                        disabled={!selectedLogoFile}
+                        onClick={handleLogoUpload}
+                      />
 
                       {hasCurrentLogo && (
-                        <button
-                          type="button"
-                          disabled={logoBusy}
-                          onClick={() => void handleLogoRemove()}
-                          className={
-                            logoBusy
-                              ? adminButtonDisabled
-                              : "rounded-lg border border-red-300 bg-white px-5 py-2.5 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 admin-dark:border-red-500/40 admin-dark:bg-zinc-900 admin-dark:text-red-300 admin-dark:hover:bg-red-500/10"
-                          }
-                        >
-                          {removingLogo ? "Removing logo…" : "Remove logo"}
-                        </button>
+                        <AdminSaveButton
+                          actionKey="site:logoRemove"
+                          saveStatus={saveStatus}
+                          idleLabel="Remove logo"
+                          savingLabel="Removing…"
+                          savedLabel="Logo removed"
+                          variant="danger"
+                          size="md"
+                          onClick={handleLogoRemove}
+                        />
                       )}
                     </div>
                   </div>
@@ -600,22 +577,24 @@ export default function AdminSiteContentEditor() {
               </div>
             </section>
 
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <button
-                type="submit"
-                disabled={saving}
-                className={
-                  saving
-                    ? adminButtonDisabled
-                    : "rounded-lg bg-amber-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-800 admin-dark:bg-amber-600 admin-dark:hover:bg-amber-500"
-                }
-              >
-                {saving ? "Saving…" : "Save changes"}
-              </button>
+            <div className="flex flex-col items-start gap-3 sm:flex-row">
+              <AdminSaveButton
+                actionKey="site:save"
+                saveStatus={saveStatus}
+                idleLabel="Save changes"
+                savingLabel="Saving…"
+                savedLabel="Saved"
+                variant="primary"
+                size="md"
+                onClick={() => {
+                  const formEl = document.getElementById("site-content-form") as HTMLFormElement | null;
+                  formEl?.requestSubmit();
+                }}
+              />
               <button
                 type="button"
                 onClick={handleReset}
-                disabled={saving}
+                disabled={saveStatus.isSaving("site:save")}
                 className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 admin-dark:border-zinc-700 admin-dark:bg-zinc-900 admin-dark:text-zinc-200 admin-dark:hover:bg-zinc-800"
               >
                 Reset to fallback content
