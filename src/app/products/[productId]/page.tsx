@@ -1,9 +1,76 @@
+import type { Metadata } from "next";
 import Footer from "../../components/Footer";
 import Header from "../../components/Header";
 import ProductDetail from "../../components/ProductDetail";
-import { getProduct } from "@/lib/firebase/productRepository";
+import {
+  getProduct,
+  getProductCoverImageUrl,
+} from "@/lib/firebase/productRepository";
 import { loadPublicSiteContent } from "@/lib/firebase/siteContentRepository";
+import { SITE_NAME } from "@/lib/siteSeo";
 import { notFound } from "next/navigation";
+
+function buildProductDescription(
+  seoDescription: string | null,
+  description: string,
+  productName: string,
+): string {
+  if (seoDescription?.trim()) {
+    return seoDescription.trim();
+  }
+  if (description.trim()) {
+    return description.trim();
+  }
+  return `Custom embroidery and DTF apparel for ${productName}. Request a quote from ${SITE_NAME}.`;
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ productId: string }>;
+}): Promise<Metadata> {
+  const { productId } = await params;
+  const content = await loadPublicSiteContent();
+  const product = await getProduct(content.siteId, productId);
+
+  if (!product || !product.isVisible) {
+    return {
+      title: "Product Not Found",
+      robots: { index: false, follow: false },
+    };
+  }
+
+  const description = buildProductDescription(
+    product.seoDescription,
+    product.description,
+    product.name,
+  );
+  const title = `${product.name} | ${SITE_NAME}`;
+  const coverImage = getProductCoverImageUrl(product);
+  const openGraphImages = coverImage
+    ? [{ url: coverImage, alt: product.name }]
+    : undefined;
+
+  return {
+    title: product.name,
+    description,
+    alternates: {
+      canonical: `/products/${productId}`,
+    },
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      images: openGraphImages,
+    },
+    twitter: {
+      card: coverImage ? "summary_large_image" : "summary",
+      title,
+      description,
+      images: coverImage ? [coverImage] : undefined,
+    },
+  };
+}
 
 export default async function ProductDetailPage({
   params,

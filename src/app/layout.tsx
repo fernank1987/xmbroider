@@ -1,6 +1,5 @@
-import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { siteContent } from "@/lib/siteContent";
+import { buildRootSiteMetadata } from "@/lib/siteSeo";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,16 +12,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: siteContent.seo.title,
-  description: siteContent.seo.description,
-  openGraph: {
-    title: siteContent.seo.title,
-    description: siteContent.seo.description,
-    locale: "en_US",
-    type: "website",
-  },
-};
+export const metadata = buildRootSiteMetadata();
 
 export default function RootLayout({
   children,

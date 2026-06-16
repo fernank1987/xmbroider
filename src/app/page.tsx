@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import Footer from "./components/Footer";
@@ -7,6 +8,12 @@ import { listPublicGalleryItems } from "@/lib/firebase/galleryRepository";
 import { loadPublicSiteContent } from "@/lib/firebase/siteContentRepository";
 import { getServiceIconPath } from "@/lib/serviceIcons";
 import type { GalleryItem as FallbackGalleryItem } from "@/lib/siteContent";
+
+export const metadata: Metadata = {
+  alternates: {
+    canonical: "/",
+  },
+};
 
 type GalleryDisplayItem = {
   id: string;

@@ -1,8 +1,18 @@
+import type { Metadata } from "next";
 import Footer from "../components/Footer";
 import Header from "../components/Header";
 import ProductsCatalog from "../components/ProductsCatalog";
 import { listVisibleProducts } from "@/lib/firebase/productRepository";
 import { loadPublicSiteContent } from "@/lib/firebase/siteContentRepository";
+
+export const metadata: Metadata = {
+  title: "Products",
+  description:
+    "Browse custom embroidery and DTF apparel by brand. Preview logo placement and request a quote from XMBroider.",
+  alternates: {
+    canonical: "/products",
+  },
+};
 
 export default async function ProductsPage() {
   const content = await loadPublicSiteContent();

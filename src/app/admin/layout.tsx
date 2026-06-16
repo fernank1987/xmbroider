@@ -1,5 +1,13 @@
+import type { Metadata } from "next";
 import AdminAuthProvider from "./components/AdminAuthProvider";
 import AdminThemeProvider from "./components/AdminThemeProvider";
+
+export const metadata: Metadata = {
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 export default function AdminLayout({
   children,

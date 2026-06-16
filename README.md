@@ -189,6 +189,51 @@ service firebase.storage {
 
 Tighten `allow write` later to match your admin email allowlist once you move checks into security rules.
 
+## Production deployment (Vercel + xmbroider.com)
+
+### Connect the domain to Vercel
+
+1. Import or link this repository in the [Vercel dashboard](https://vercel.com/).
+2. Add the production environment variables (Firebase `NEXT_PUBLIC_*`, optional Resend keys) under **Project → Settings → Environment Variables**.
+3. Deploy the project and confirm the default `*.vercel.app` URL loads.
+4. In **Project → Settings → Domains**, add `xmbroider.com` and `www.xmbroider.com`.
+5. At your domain registrar (currently Bluehost), update DNS to Vercel:
+   - **A record** for `@` → `76.76.21.21` (Vercel apex)
+   - **CNAME** for `www` → `cname.vercel-dns.com`
+6. Wait for DNS propagation and verify HTTPS on both hostnames in Vercel.
+7. Choose a single canonical hostname (recommended: `https://xmbroider.com`) and configure the other hostname to redirect in Vercel if needed.
+
+SEO files served in production:
+
+- `https://xmbroider.com/robots.txt`
+- `https://xmbroider.com/sitemap.xml`
+
+Canonical origin is configured in `src/lib/siteSeo.ts` as `https://xmbroider.com`.
+
+### Google Search Console after go-live
+
+The domain stays `xmbroider.com`, so a **Change of Address** is not required.
+
+After DNS points to Vercel:
+
+1. Open [Google Search Console](https://search.google.com/search-console) and confirm the `xmbroider.com` property still verifies (DNS/HTML file may need a quick re-check after DNS changes).
+2. Submit the sitemap: `https://xmbroider.com/sitemap.xml`
+3. Use URL Inspection on `/`, `/products`, `/preview`, and a sample product URL to confirm indexing.
+4. Monitor **Pages** and **Sitemaps** for crawl errors during the first week.
+
+### WordPress → Next.js URL notes
+
+The previous Bluehost/WordPress site used pages such as Home, Services, About, and Contact. The new App Router site is section-based on `/` (with anchors like `#quote`) plus `/products`, `/products/[productId]`, and `/preview`.
+
+If old WordPress paths still receive traffic after launch, add redirects in `next.config` or Vercel **Redirects** — for example:
+
+- `/home` → `/`
+- `/services` → `/` or `/products` (depending on intent)
+- `/about` → `/`
+- `/contact` → `/#quote`
+
+Compare Search Console **Pages** and server logs after launch to find any remaining legacy URLs that need redirects.
+
 ## Scripts
 
 ```bash

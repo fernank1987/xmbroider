@@ -1,7 +1,21 @@
+import type { Metadata } from "next";
 import Footer from "../components/Footer";
 import Header from "../components/Header";
 import LogoPreviewTool from "../components/LogoPreviewTool";
 import { loadPublicSiteContent } from "@/lib/firebase/siteContentRepository";
+import { siteContent } from "@/lib/siteContent";
+
+export const metadata: Metadata = {
+  title: "Logo Preview Tool",
+  description: siteContent.previewSection.description,
+  alternates: {
+    canonical: "/preview",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+};
 
 export default async function PreviewPage({
   searchParams,
