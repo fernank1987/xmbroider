@@ -23,7 +23,7 @@ Firestore structure:
 - `sites/{siteId}` — parent site summary (`siteId`, `businessName`, `tagline`, timestamps)
 - `sites/{siteId}/content/main` — editable brand, hero, and SEO content (brand may include `logoUrl`, `logoStoragePath`, and `logoAlt`)
 - `sites/{siteId}/gallery/{galleryItemId}` — gallery metadata (`title`, `category`, `imageUrl`, `storagePath`, `isVisible`, `sortOrder`, timestamps)
-- `sites/{siteId}/quoteRequests/{quoteRequestId}` — quote form submissions (`name`, `email`, `phone`, `serviceNeeded`, `projectDetails`, `quantity`, `deadline`, `status`, `source`, timestamps)
+- `sites/{siteId}/quoteRequests/{quoteRequestId}` — quote form submissions (`name`, `email`, `phone`, `serviceNeeded`, `projectDetails`, `quantity`, `deadline`, `status`, `source`, `adminReadAt`, `notificationStatus`, `notificationSentAt`, timestamps)
 - `sites/{siteId}/products/{productId}` — product catalog (`name`, `slug`, `brand`, `brandSlug`, `styleCode`, `category`, `description`, `basePriceMin`, `basePriceMax`, `sizes`, `colors`, `isVisible`, `sortOrder`, timestamps)
 
   Preview-tool submissions (`source: "logo_preview_tool"`) may also include:
@@ -90,6 +90,30 @@ Repositories:
 - `src/lib/firebase/productRepository.ts` — product catalog metadata (connected)
 
 If env vars are missing, Firebase exports are `null` and the app continues using `siteContent.ts`.
+
+### Quote email notifications (optional)
+
+When a visitor submits a quote, the app can email the admin via [Resend](https://resend.com/). Add these **server-only** variables to `.env.local` (never commit real keys):
+
+```bash
+RESEND_API_KEY=re_...
+QUOTE_NOTIFICATION_EMAIL=you@example.com
+QUOTE_FROM_EMAIL=XMBroider <notifications@your-verified-domain.com>
+```
+
+Optional customer confirmation email:
+
+```bash
+SEND_CUSTOMER_QUOTE_CONFIRMATION=true
+```
+
+Optional — persist `notificationStatus` on the quote document after email send (requires a Firebase service account JSON string):
+
+```bash
+FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
+```
+
+If Resend is not configured, quote submission still succeeds; `/api/quote-notification` returns `not_configured`.
 
 ## Firebase security rules (recommended)
 

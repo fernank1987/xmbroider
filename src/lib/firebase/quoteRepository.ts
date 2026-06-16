@@ -36,6 +36,15 @@ export const QUOTE_REQUEST_SOURCES = [
 
 export type QuoteRequestSource = (typeof QUOTE_REQUEST_SOURCES)[number];
 
+export const QUOTE_NOTIFICATION_STATUSES = [
+  "pending",
+  "sent",
+  "failed",
+  "not_configured",
+] as const;
+
+export type QuoteNotificationStatus = (typeof QUOTE_NOTIFICATION_STATUSES)[number];
+
 export type QuoteRequestPreviewData = {
   productId: string | null;
   productName: string | null;
@@ -76,6 +85,10 @@ export type QuoteRequest = {
   deadline: string | null;
   status: QuoteRequestStatus;
   source: QuoteRequestSource;
+  adminReadAt: string | null;
+  notificationStatus: QuoteNotificationStatus | null;
+  notificationSentAt: string | null;
+  notificationErrorSummary: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 } & QuoteRequestPreviewData;
@@ -165,6 +178,18 @@ function isQuoteRequestSource(value: string): value is QuoteRequestSource {
   return (QUOTE_REQUEST_SOURCES as readonly string[]).includes(value);
 }
 
+function isQuoteNotificationStatus(value: string): value is QuoteNotificationStatus {
+  return (QUOTE_NOTIFICATION_STATUSES as readonly string[]).includes(value);
+}
+
+function readNotificationStatus(value: unknown): QuoteNotificationStatus | null {
+  const status = readString(value);
+  if (!status || !isQuoteNotificationStatus(status)) {
+    return null;
+  }
+  return status;
+}
+
 function readPreviewCalibrationSource(value: unknown): PreviewCalibrationSource | null {
   if (
     value === "custom-color" ||
@@ -244,6 +269,10 @@ function parseQuoteRequest(id: string, data: DocumentData): QuoteRequest | null 
     deadline,
     status,
     source,
+    adminReadAt: parseTimestamp(data.adminReadAt),
+    notificationStatus: readNotificationStatus(data.notificationStatus),
+    notificationSentAt: parseTimestamp(data.notificationSentAt),
+    notificationErrorSummary: readString(data.notificationErrorSummary),
     createdAt: parseTimestamp(data.createdAt),
     updatedAt: parseTimestamp(data.updatedAt),
     ...parseQuoteRequestPreviewData(data),
@@ -291,6 +320,7 @@ function buildQuoteRequestWritePayload(
     deadline: input.deadline?.trim() || null,
     status: "new",
     source,
+    notificationStatus: "pending",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
@@ -400,8 +430,40 @@ export async function updateQuoteRequestStatus(
 
   const docRef = getQuoteRequestDocRef(siteId, quoteId);
 
-  await updateDoc(docRef, {
+  const update: Record<string, unknown> = {
     status,
+    updatedAt: serverTimestamp(),
+  };
+
+  if (status !== "new") {
+    update.adminReadAt = serverTimestamp();
+  }
+
+  await updateDoc(docRef, update);
+
+  const saved = await getDoc(docRef);
+  const parsed = saved.exists() ? parseQuoteRequest(saved.id, saved.data()) : null;
+
+  if (!parsed) {
+    throw new Error("Quote request was updated but could not be read back.");
+  }
+
+  return parsed;
+}
+
+/** Marks a quote as reviewed/read in admin without changing status. */
+export async function markQuoteRequestAsRead(
+  siteId: string,
+  quoteId: string,
+): Promise<QuoteRequest> {
+  if (!isFirebaseConfigured || !db) {
+    throw new Error(FIREBASE_DISABLED_MESSAGE);
+  }
+
+  const docRef = getQuoteRequestDocRef(siteId, quoteId);
+
+  await updateDoc(docRef, {
+    adminReadAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
 

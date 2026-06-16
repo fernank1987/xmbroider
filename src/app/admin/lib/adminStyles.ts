@@ -89,6 +89,15 @@ export const adminSaveSaving =
 export const adminSaveMuted =
   "text-xs text-slate-500 admin-dark:text-zinc-500";
 
+export const adminBadgeNew =
+  "inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900 admin-dark:bg-amber-500/20 admin-dark:text-amber-200";
+
+export const adminBadgeMuted =
+  "inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 admin-dark:bg-zinc-800 admin-dark:text-zinc-400";
+
+export const adminNavBadge =
+  "ml-2 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-600 px-1.5 py-0.5 text-[10px] font-bold text-white admin-dark:bg-amber-500";
+
 export const adminUploadZone =
   "rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center admin-dark:border-zinc-700 admin-dark:bg-zinc-900/50";
 

@@ -8,6 +8,10 @@ import {
   generateQuoteRequestId,
 } from "@/lib/firebase/quoteRepository";
 import {
+  buildQuoteNotificationPayload,
+  notifyQuoteRequestCreated,
+} from "@/lib/quoteNotificationClient";
+import {
   uploadQuoteArtwork,
   uploadQuotePreviewImage,
   validateQuoteArtworkFile,
@@ -414,7 +418,7 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
         previewImageStoragePath = previewUpload.path;
       }
 
-      await createQuoteRequest(
+      const created = await createQuoteRequest(
         siteId,
         {
           name: quoteFields.name,
@@ -456,6 +460,8 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
         },
         { quoteRequestId },
       );
+
+      void notifyQuoteRequestCreated(buildQuoteNotificationPayload(siteId, created));
 
       setSuccessMessage(
         "Your logo preview and quote request were submitted. We will follow up soon.",

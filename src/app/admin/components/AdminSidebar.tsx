@@ -1,13 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
+import Link from "next/link";
 import AdminLogoutButton from "./AdminAuthActions";
 import { useAdminAuth } from "./AdminAuthProvider";
+import { useUnreadQuoteCount } from "../hooks/useUnreadQuoteCount";
 import {
   adminBodyText,
   adminBrandSubtitle,
   adminBrandTitle,
+  adminNavBadge,
   adminNavLink,
   adminNavLinkActive,
   adminNavLinkInactive,
@@ -21,7 +23,7 @@ const navItems = [
   { href: "/admin/gallery", label: "Gallery" },
   { href: "/admin/products", label: "Products" },
   { href: "/admin/services", label: "Services" },
-  { href: "/admin/quotes", label: "Quotes" },
+  { href: "/admin/quotes", label: "Quotes", showUnreadBadge: true },
 ];
 
 function isActive(pathname: string, href: string, exact?: boolean) {
@@ -32,6 +34,7 @@ function isActive(pathname: string, href: string, exact?: boolean) {
 export default function AdminSidebar() {
   const pathname = usePathname();
   const { user } = useAdminAuth();
+  const unreadQuoteCount = useUnreadQuoteCount();
 
   return (
     <aside className={adminSidebar}>
@@ -50,15 +53,19 @@ export default function AdminSidebar() {
       <nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-col lg:gap-0.5 lg:overflow-visible lg:px-3 lg:pb-6">
         {navItems.map((item) => {
           const active = isActive(pathname, item.href, item.exact);
+          const showBadge =
+            item.showUnreadBadge && unreadQuoteCount !== null && unreadQuoteCount > 0;
+
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`${adminNavLink} ${
+              className={`${adminNavLink} inline-flex items-center ${
                 active ? adminNavLinkActive : adminNavLinkInactive
               }`}
             >
-              {item.label}
+              <span>{item.label}</span>
+              {showBadge && <span className={adminNavBadge}>{unreadQuoteCount}</span>}
             </Link>
           );
         })}

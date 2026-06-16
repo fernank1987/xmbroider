@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   listQuoteRequests,
+  markQuoteRequestAsRead,
   QUOTE_REQUEST_STATUSES,
   updateQuoteRequestStatus,
   type QuoteRequest,
@@ -12,8 +13,11 @@ import {
 import { PLACEMENT_LABELS, type Placement } from "@/lib/logoPreview";
 import { mmToInches } from "@/lib/logoSize";
 import { PREVIEW_CALIBRATION_SOURCE_LABELS } from "@/lib/previewCalibration";
+import { isQuoteUnread, countUnreadQuotes } from "@/lib/quoteUnread";
 import { siteContent } from "@/lib/siteContent";
 import {
+  adminBadgeMuted,
+  adminBadgeNew,
   adminBodyText,
   adminCard,
   adminEmptyIcon,
@@ -34,6 +38,7 @@ import {
 } from "../lib/adminStyles";
 import type { SaveStatusApi } from "../lib/useSaveStatus";
 import { useSaveStatus } from "../lib/useSaveStatus";
+import AdminSaveButton from "./AdminSaveButton";
 import SaveStatusMessage from "./SaveStatusMessage";
 
 const SITE_ID = siteContent.siteId;
@@ -142,20 +147,82 @@ function formatQuoteProductMeta(quote: QuoteRequest): string | null {
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
+function QuoteUnreadBadge({ quote }: { quote: QuoteRequest }) {
+  if (!isQuoteUnread(quote)) {
+    return null;
+  }
+  return <span className={adminBadgeNew}>New</span>;
+}
+
+function QuoteMetaBadges({ quote }: { quote: QuoteRequest }) {
+  const badges: string[] = [];
+  badges.push(formatSource(quote.source));
+  if (quote.productName) {
+    badges.push(quote.productName);
+  }
+  if (quote.colorName) {
+    badges.push(quote.colorName);
+  }
+  if (quote.size) {
+    badges.push(`Size ${quote.size}`);
+  }
+  if (quote.placement) {
+    badges.push(formatPlacement(quote.placement));
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {badges.map((badge) => (
+        <span key={badge} className={adminBadgeMuted}>
+          {badge}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function QuoteRowActions({
+  quote,
+  saveStatus,
+  onMarkReviewed,
+}: {
+  quote: QuoteRequest;
+  saveStatus: SaveStatusApi;
+  onMarkReviewed: (quoteId: string) => void;
+}) {
+  if (!isQuoteUnread(quote)) {
+    return null;
+  }
+
+  return (
+    <AdminSaveButton
+      actionKey={`quote:${quote.id}:markRead`}
+      saveStatus={saveStatus}
+      idleLabel="Mark as reviewed"
+      savingLabel="Saving…"
+      savedLabel="Reviewed"
+      variant="outline"
+      size="xs"
+      onClick={() => onMarkReviewed(quote.id)}
+    />
+  );
+}
+
 function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
   if (quote.source !== "logo_preview_tool") {
     return (
-      <p className={`text-sm ${adminTableCellMuted}`}>
-        Source: {formatSource(quote.source)}
-      </p>
+      <div className="space-y-2">
+        <QuoteMetaBadges quote={quote} />
+        <p className={`text-sm ${adminTableCellMuted}`}>
+          Standard quote form submission.
+        </p>
+      </div>
     );
   }
 
   return (
     <div className="space-y-3">
-      <p className={`text-sm ${adminTableCellMuted}`}>
-        Source: {formatSource(quote.source)}
-      </p>
+      <QuoteMetaBadges quote={quote} />
       <dl className="grid gap-2 text-sm sm:grid-cols-2">
         <div>
           <dt className={adminLabel}>Product</dt>
@@ -375,6 +442,21 @@ export default function AdminQuotesEditor() {
     );
   };
 
+  const handleMarkAsReviewed = (quoteId: string) => {
+    void saveStatus.runAction(
+      `quote:${quoteId}:markRead`,
+      async () => {
+        const updated = await markQuoteRequestAsRead(SITE_ID, quoteId);
+        setQuotes((current) =>
+          current.map((quote) => (quote.id === quoteId ? updated : quote)),
+        );
+      },
+      { savedMessage: "Reviewed" },
+    );
+  };
+
+  const unreadCount = useMemo(() => countUnreadQuotes(quotes), [quotes]);
+
   return (
     <div className="flex-1 space-y-6 p-6 lg:p-8">
       <div className={adminNotice}>
@@ -426,6 +508,11 @@ export default function AdminQuotesEditor() {
         <>
           <p className={`text-sm ${adminBodyText}`}>
             {quotes.length} quote request{quotes.length === 1 ? "" : "s"} · newest first
+            {unreadCount > 0 && (
+              <span className="ml-2 font-medium text-amber-700 admin-dark:text-amber-400">
+                · {unreadCount} unread
+              </span>
+            )}
           </p>
 
           <div className="space-y-4 lg:hidden">
@@ -433,18 +520,26 @@ export default function AdminQuotesEditor() {
               <article key={quote.id} className={`${adminCard} space-y-4 p-5`}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h3 className={adminSectionTitle}>{quote.name}</h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className={adminSectionTitle}>{quote.name}</h3>
+                      <QuoteUnreadBadge quote={quote} />
+                    </div>
                     <p className={`mt-1 text-sm ${adminBodyText}`}>{quote.email}</p>
                     <p className={`mt-1 text-xs ${adminTableCellSubtle}`}>
                       {formatQuoteDate(quote.createdAt)}
                     </p>
                   </div>
-                  <div className="min-w-[160px] flex-1">
+                  <div className="min-w-[160px] flex-1 space-y-2">
                     <label className={adminLabel}>Status</label>
                     <QuoteStatusSelect
                       quote={quote}
                       saveStatus={saveStatus}
                       onStatusChange={handleStatusChange}
+                    />
+                    <QuoteRowActions
+                      quote={quote}
+                      saveStatus={saveStatus}
+                      onMarkReviewed={handleMarkAsReviewed}
                     />
                   </div>
                 </div>
@@ -500,7 +595,10 @@ export default function AdminQuotesEditor() {
                 {quotes.map((quote) => (
                   <tr key={quote.id}>
                     <td className="px-4 py-4 align-top">
-                      <p className={adminTableCellTitle}>{quote.name}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className={adminTableCellTitle}>{quote.name}</p>
+                        <QuoteUnreadBadge quote={quote} />
+                      </div>
                       <p className={`mt-1 ${adminTableCellMuted}`}>{quote.email}</p>
                       <p className={`mt-1 ${adminTableCellSubtle}`}>
                         {quote.phone || "No phone"}
@@ -530,6 +628,13 @@ export default function AdminQuotesEditor() {
                         saveStatus={saveStatus}
                         onStatusChange={handleStatusChange}
                       />
+                      <div className="mt-2">
+                        <QuoteRowActions
+                          quote={quote}
+                          saveStatus={saveStatus}
+                          onMarkReviewed={handleMarkAsReviewed}
+                        />
+                      </div>
                     </td>
                     <td className={`px-4 py-4 align-top ${adminTableCellSubtle}`}>
                       {formatQuoteDate(quote.createdAt)}

@@ -3,6 +3,10 @@
 import { useState } from "react";
 import { createQuoteRequest } from "@/lib/firebase/quoteRepository";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
+import {
+  buildQuoteNotificationPayload,
+  notifyQuoteRequestCreated,
+} from "@/lib/quoteNotificationClient";
 import type { SiteContent } from "@/lib/siteContent";
 
 type QuoteFormProps = {
@@ -89,7 +93,7 @@ export default function QuoteForm({ siteId, form }: QuoteFormProps) {
     setSubmitting(true);
 
     try {
-      await createQuoteRequest(siteId, {
+      const created = await createQuoteRequest(siteId, {
         name: fields.name,
         email: fields.email,
         phone: fields.phone || undefined,
@@ -98,6 +102,8 @@ export default function QuoteForm({ siteId, form }: QuoteFormProps) {
         deadline: fields.deadline || undefined,
         projectDetails: fields.projectDetails,
       });
+
+      void notifyQuoteRequestCreated(buildQuoteNotificationPayload(siteId, created));
 
       setFields(emptyFields);
       setSuccessMessage(
