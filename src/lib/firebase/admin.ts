@@ -1,12 +1,14 @@
 import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
+
+type AdminStorageBucket = ReturnType<ReturnType<typeof getStorage>["bucket"]>;
 
 let adminApp: App | undefined;
 
-/** Returns Firestore Admin SDK when FIREBASE_SERVICE_ACCOUNT_JSON is configured. */
-export function getAdminFirestore(): Firestore | null {
+function initializeAdminApp(): App | null {
   if (getApps().length > 0) {
-    return getFirestore();
+    return getApps()[0] ?? null;
   }
 
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim();
@@ -31,10 +33,40 @@ export function getAdminFirestore(): Firestore | null {
         clientEmail: serviceAccount.client_email,
         privateKey: serviceAccount.private_key.replace(/\\n/g, "\n"),
       }),
+      storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET?.trim(),
     });
 
-    return getFirestore(adminApp);
+    return adminApp;
   } catch {
     return null;
   }
+}
+
+/** Returns the initialized Firebase Admin app when configured. */
+export function getAdminApp(): App | null {
+  return initializeAdminApp();
+}
+
+/** Returns Firestore Admin SDK when FIREBASE_SERVICE_ACCOUNT_JSON is configured. */
+export function getAdminFirestore(): Firestore | null {
+  const app = initializeAdminApp();
+  if (!app) {
+    return null;
+  }
+  return getFirestore(app);
+}
+
+/** Returns Firebase Storage bucket for server-side uploads. */
+export function getAdminStorageBucket(): AdminStorageBucket | null {
+  const app = initializeAdminApp();
+  if (!app) {
+    return null;
+  }
+
+  const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET?.trim();
+  if (!bucketName) {
+    return null;
+  }
+
+  return getStorage(app).bucket(bucketName);
 }

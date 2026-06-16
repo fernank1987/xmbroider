@@ -325,16 +325,17 @@ function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
   }
 
   const logoEntries = getQuoteLogoEntries(quote);
-  const compositePreviewUrl = quote.previewCompositeUrl ?? quote.previewImageUrl;
+  const compositePreviewUrl = quote.previewCompositeUrl;
+  const hasCompositePreview = Boolean(compositePreviewUrl);
 
   return (
     <div className="space-y-3">
       <QuoteMetaBadges quote={quote} />
-      {compositePreviewUrl && (
+      {hasCompositePreview && (
         <div>
           <p className={adminLabel}>Customer preview mockup</p>
           <a
-            href={compositePreviewUrl}
+            href={compositePreviewUrl!}
             target="_blank"
             rel="noreferrer"
             className="mt-2 block max-w-2xl"
@@ -342,18 +343,23 @@ function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
             <div className={`${adminGalleryThumb} !aspect-[4/3] !h-auto !w-full max-w-2xl`}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={compositePreviewUrl}
+                src={compositePreviewUrl!}
                 alt={`Customer preview mockup for ${quote.name}`}
                 className="h-full w-full object-contain p-2"
               />
             </div>
           </a>
-          {quote.previewCompositeExportError && (
-            <p className="mt-2 text-xs text-amber-700 admin-dark:text-amber-400">
-              Export note: {quote.previewCompositeExportError}
-            </p>
-          )}
         </div>
+      )}
+      {!hasCompositePreview && quote.previewCompositeExportError && (
+        <p className="text-xs text-amber-700 admin-dark:text-amber-400">
+          Composite preview unavailable: {quote.previewCompositeExportError}
+        </p>
+      )}
+      {hasCompositePreview && quote.previewCompositeExportError && (
+        <p className="text-xs text-amber-700 admin-dark:text-amber-400">
+          Export note: {quote.previewCompositeExportError}
+        </p>
       )}
       <dl className="grid gap-2 text-sm sm:grid-cols-2">
         <div>
@@ -501,6 +507,7 @@ function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
           </a>
         )}
         {quote.previewImageUrl &&
+          !quote.previewCompositeUrl &&
           quote.previewImageUrl !== quote.previewCompositeUrl && (
             <a
               href={quote.previewImageUrl}

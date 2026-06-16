@@ -8,8 +8,6 @@ import TurnstileWidget, { type TurnstileWidgetHandle } from "./TurnstileWidget";
 import { generateQuoteRequestId } from "@/lib/firebase/quoteRepository";
 import {
   uploadQuoteArtwork,
-  uploadQuoteCompositePreview,
-  uploadQuotePreviewImage,
   validateQuoteArtworkFile,
 } from "@/lib/firebase/storageRepository";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
@@ -18,7 +16,7 @@ import {
   PLACEMENT_LABELS,
   type Placement,
 } from "@/lib/logoPreview";
-import { generatePreviewImageBlob } from "@/lib/logoPreviewExport";
+import { requestServerCompositePreview } from "@/lib/previewCompositeApi";
 import {
   applyPlacementToSlot,
   createInitialLogoSlots,
@@ -670,47 +668,35 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
       let previewCompositeExportError: string | null = null;
 
       try {
-        const exportLogos = uploadResults
-          .map(({ slot, upload }) => ({
-            artworkObjectUrl: upload.url,
+        const serverComposite = await requestServerCompositePreview({
+          siteId,
+          turnstileToken: turnstileToken!,
+          quoteRequestId,
+          productImageUrl: productPhotoUrl,
+          mockupSide: exportMockupSide,
+          fallbackSwatchColor: selectedVariant.swatchColor,
+          baseCalibration: fallbackCalibration,
+          logos: uploadResults.map(({ slot, upload }) => ({
+            label: slot.label,
+            artworkUrl: upload.url,
+            placement: slot.placement,
+            logoWidthMm: slot.widthMm,
             logoGarmentPositionX: slot.positionX,
             logoGarmentPositionY: slot.positionY,
-            logoWidthMm: slot.widthMm,
             calibration: resolvePreviewCalibration(
               selectedVariant,
               selectedProduct,
               slot.placement,
             ),
-            placement: slot.placement,
-          }));
-
-        const previewResult = await generatePreviewImageBlob({
-          productImageSrc: productPhotoUrl,
-          fallbackSwatchColor: selectedVariant.swatchColor,
-          mockupSide: exportMockupSide,
-          baseCalibration: fallbackCalibration,
-          logos: exportLogos,
+          })),
         });
 
-        if (previewResult.blob) {
-          const [previewUpload, compositeUpload] = await Promise.all([
-            uploadQuotePreviewImage(siteId, quoteRequestId, previewResult.blob),
-            uploadQuoteCompositePreview(siteId, quoteRequestId, previewResult.blob),
-          ]);
-          previewImageUrl = previewUpload.url;
-          previewImageStoragePath = previewUpload.path;
-          previewCompositeUrl = compositeUpload.url;
-          previewCompositeStoragePath = compositeUpload.path;
-          if (previewResult.approximateFallback) {
-            previewCompositeExportError =
-              previewResult.errorMessage ?? APPROXIMATE_MOCKUP_WARNING;
-          } else if (previewResult.errorMessage) {
-            previewCompositeExportError = previewResult.errorMessage;
-          }
-        } else {
-          previewCompositeExportError =
-            previewResult.errorMessage ??
-            "Composite preview image could not be generated.";
+        previewImageUrl = serverComposite.previewImageUrl;
+        previewImageStoragePath = serverComposite.previewImageStoragePath;
+        previewCompositeUrl = serverComposite.previewCompositeUrl;
+        previewCompositeStoragePath = serverComposite.previewCompositeStoragePath;
+        if (serverComposite.exportNote) {
+          previewCompositeExportError = serverComposite.exportNote;
         }
       } catch (exportError) {
         previewCompositeExportError = getSubmitErrorMessage(exportError);

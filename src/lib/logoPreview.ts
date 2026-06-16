@@ -44,7 +44,14 @@ function loadImageFromSrc(src: string, crossOrigin?: string): Promise<HTMLImageE
     if (crossOrigin) {
       image.crossOrigin = crossOrigin;
     }
-    image.onload = () => resolve(image);
+    image.referrerPolicy = "no-referrer";
+    image.onload = () => {
+      if (typeof image.decode === "function") {
+        void image.decode().then(() => resolve(image)).catch(() => resolve(image));
+        return;
+      }
+      resolve(image);
+    };
     image.onerror = () => reject(new Error(`Unable to load image: ${src}`));
     image.src = src;
   });
