@@ -126,20 +126,51 @@ function buildCustomerConfirmationText(name: string): string {
   ].join("\n");
 }
 
+function getMissingResendEnvVars(): string[] {
+  const missing: string[] = [];
+  if (!process.env.RESEND_API_KEY?.trim()) {
+    missing.push("RESEND_API_KEY");
+  }
+  if (!process.env.QUOTE_NOTIFICATION_EMAIL?.trim()) {
+    missing.push("QUOTE_NOTIFICATION_EMAIL");
+  }
+  if (!process.env.QUOTE_FROM_EMAIL?.trim()) {
+    missing.push("QUOTE_FROM_EMAIL");
+  }
+  return missing;
+}
+
+function getNotificationConfigErrorSummary(): string {
+  const missing = getMissingResendEnvVars();
+  if (missing.length === 0) {
+    return "Email notification is not configured.";
+  }
+  return `Missing env: ${missing.join(", ")}`;
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+  return fallback;
+}
+
 export async function sendQuoteNotificationEmails(
   payload: QuoteNotificationPayload,
 ): Promise<QuoteNotificationResult> {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  const notifyEmail = process.env.QUOTE_NOTIFICATION_EMAIL?.trim();
-  const fromEmail = process.env.QUOTE_FROM_EMAIL?.trim();
+  const missingEnvVars = getMissingResendEnvVars();
 
-  if (!apiKey || !notifyEmail || !fromEmail) {
+  if (missingEnvVars.length > 0) {
     return {
       ok: true,
       notificationStatus: "not_configured",
-      errorSummary: "Email notification is not configured.",
+      errorSummary: getNotificationConfigErrorSummary(),
     };
   }
+
+  const apiKey = process.env.RESEND_API_KEY!.trim();
+  const notifyEmail = process.env.QUOTE_NOTIFICATION_EMAIL!.trim();
+  const fromEmail = process.env.QUOTE_FROM_EMAIL!.trim();
 
   const resend = new Resend(apiKey);
   const subject = `New XMBroider quote request from ${payload.name}`;
@@ -158,7 +189,10 @@ export async function sendQuoteNotificationEmails(
       return {
         ok: false,
         notificationStatus: "failed",
-        errorSummary: "Unable to send admin notification email.",
+        errorSummary: getErrorMessage(
+          adminResult.error,
+          "Unable to send admin notification email.",
+        ),
       };
     }
 
@@ -181,11 +215,11 @@ export async function sendQuoteNotificationEmails(
       notificationStatus: "sent",
       customerConfirmationSent,
     };
-  } catch {
+  } catch (error) {
     return {
       ok: false,
       notificationStatus: "failed",
-      errorSummary: "Unable to send notification email.",
+      errorSummary: getErrorMessage(error, "Unable to send notification email."),
     };
   }
 }

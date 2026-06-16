@@ -3,6 +3,30 @@ import type { QuoteNotificationPayload } from "@/lib/email/quoteNotificationType
 import { getAdminFirestore } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+  return fallback;
+}
+
+function getResendEnvDiagnostics() {
+  const quoteFromEmail = process.env.QUOTE_FROM_EMAIL?.trim() || null;
+  const quoteNotificationEmail = process.env.QUOTE_NOTIFICATION_EMAIL?.trim() || null;
+
+  return {
+    hasResendApiKey: Boolean(process.env.RESEND_API_KEY?.trim()),
+    hasQuoteNotificationEmail: Boolean(quoteNotificationEmail),
+    hasQuoteFromEmail: Boolean(quoteFromEmail),
+    quoteFromEmail: quoteFromEmail ?? "(missing)",
+    quoteNotificationEmail: quoteNotificationEmail ? "(set)" : "(missing)",
+  };
+}
+
+function logQuoteNotificationEvent(details: Record<string, unknown>): void {
+  console.log("[quote-notification]", details);
+}
+
 export async function persistQuoteNotificationStatus(
   siteId: string,
   quoteId: string,
@@ -11,7 +35,7 @@ export async function persistQuoteNotificationStatus(
 ): Promise<void> {
   const db = getAdminFirestore();
   if (!db) {
-    return;
+    throw new Error("Firebase Admin is not configured.");
   }
 
   const update: Record<string, unknown> = {
@@ -38,6 +62,14 @@ export async function persistQuoteNotificationStatus(
 export async function sendQuoteNotificationForPayload(
   payload: QuoteNotificationPayload,
 ): Promise<void> {
+  const envDiagnostics = getResendEnvDiagnostics();
+
+  logQuoteNotificationEvent({
+    phase: "start",
+    quoteId: payload.quoteId,
+    ...envDiagnostics,
+  });
+
   try {
     const result = await sendQuoteNotificationEmails(payload);
 
@@ -48,24 +80,46 @@ export async function sendQuoteNotificationForPayload(
         result.notificationStatus,
         result.errorSummary,
       );
-    } catch (error) {
-      if (process.env.NODE_ENV === "development") {
-        console.warn("[quote-notification] Failed to persist notification status:", error);
-      }
+    } catch (persistError) {
+      logQuoteNotificationEvent({
+        phase: "persist_failed",
+        quoteId: payload.quoteId,
+        notificationStatus: result.notificationStatus,
+        error: getErrorMessage(persistError, "Failed to persist notification status."),
+      });
     }
 
-    if (process.env.NODE_ENV === "development") {
-      console.log("[quote-notification]", {
-        quoteId: payload.quoteId,
-        status: result.notificationStatus,
-      });
-    }
+    logQuoteNotificationEvent({
+      phase: "complete",
+      quoteId: payload.quoteId,
+      notificationStatus: result.notificationStatus,
+      errorSummary: result.errorSummary ?? null,
+      customerConfirmationSent: result.customerConfirmationSent ?? false,
+    });
   } catch (error) {
-    if (process.env.NODE_ENV === "development") {
-      console.warn("[quote-notification] send failed:", {
+    const errorSummary = getErrorMessage(error, "Unable to send notification email.");
+
+    try {
+      await persistQuoteNotificationStatus(
+        payload.siteId,
+        payload.quoteId,
+        "failed",
+        errorSummary,
+      );
+    } catch (persistError) {
+      logQuoteNotificationEvent({
+        phase: "persist_failed",
         quoteId: payload.quoteId,
-        error,
+        notificationStatus: "failed",
+        error: getErrorMessage(persistError, "Failed to persist notification status."),
       });
     }
+
+    logQuoteNotificationEvent({
+      phase: "failed",
+      quoteId: payload.quoteId,
+      notificationStatus: "failed",
+      errorSummary,
+    });
   }
 }

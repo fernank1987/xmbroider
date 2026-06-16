@@ -89,7 +89,7 @@ export async function POST(request: Request) {
     });
   }
 
-  void sendQuoteNotificationForPayload(buildQuoteNotificationPayload(siteId, created));
+  await sendQuoteNotificationForPayload(buildQuoteNotificationPayload(siteId, created));
 
   return NextResponse.json({
     ok: true,

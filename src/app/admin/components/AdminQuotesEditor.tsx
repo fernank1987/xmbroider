@@ -7,6 +7,7 @@ import {
   QUOTE_REQUEST_STATUSES,
   updateQuoteRequestStatus,
   type QuoteRequest,
+  type QuoteNotificationStatus,
   type QuoteRequestSource,
   type QuoteRequestStatus,
 } from "@/lib/firebase/quoteRepository";
@@ -145,6 +146,57 @@ function formatQuoteProductMeta(quote: QuoteRequest): string | null {
     parts.push(quote.decorationMethod);
   }
   return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+function formatNotificationStatus(status: QuoteNotificationStatus | null): string {
+  switch (status) {
+    case "sent":
+      return "Sent";
+    case "failed":
+      return "Failed";
+    case "not_configured":
+      return "Not configured";
+    case "pending":
+      return "Pending";
+    default:
+      return "Unknown";
+  }
+}
+
+function getNotificationStatusClassName(status: QuoteNotificationStatus | null): string {
+  switch (status) {
+    case "sent":
+      return "text-emerald-700 admin-dark:text-emerald-300";
+    case "failed":
+      return "text-red-700 admin-dark:text-red-300";
+    case "not_configured":
+      return "text-amber-700 admin-dark:text-amber-300";
+    case "pending":
+      return "text-slate-600 admin-dark:text-slate-300";
+    default:
+      return adminTableCellMuted;
+  }
+}
+
+function QuoteNotificationDetails({ quote }: { quote: QuoteRequest }) {
+  return (
+    <div className="space-y-1">
+      <p className={adminLabel}>Email notification</p>
+      <p className={`text-sm font-medium ${getNotificationStatusClassName(quote.notificationStatus)}`}>
+        {formatNotificationStatus(quote.notificationStatus)}
+      </p>
+      {quote.notificationSentAt && (
+        <p className={`text-xs ${adminTableCellSubtle}`}>
+          Sent {formatQuoteDate(quote.notificationSentAt)}
+        </p>
+      )}
+      {quote.notificationErrorSummary && (
+        <p className="text-xs text-amber-700 admin-dark:text-amber-400">
+          {quote.notificationErrorSummary}
+        </p>
+      )}
+    </div>
+  );
 }
 
 function QuoteUnreadBadge({ quote }: { quote: QuoteRequest }) {
@@ -606,6 +658,7 @@ export default function AdminQuotesEditor() {
                   </p>
                 </div>
 
+                <QuoteNotificationDetails quote={quote} />
                 <QuotePreviewDetails quote={quote} />
               </article>
             ))}
@@ -621,6 +674,7 @@ export default function AdminQuotesEditor() {
                   <th className={adminTableHeadCell}>Deadline</th>
                   <th className={adminTableHeadCell}>Project details</th>
                   <th className={adminTableHeadCell}>Preview</th>
+                  <th className={adminTableHeadCell}>Email</th>
                   <th className={adminTableHeadCell}>Status</th>
                   <th className={adminTableHeadCell}>Submitted</th>
                 </tr>
@@ -655,6 +709,9 @@ export default function AdminQuotesEditor() {
                     </td>
                     <td className="min-w-[180px] px-4 py-4 align-top">
                       <QuotePreviewDetails quote={quote} />
+                    </td>
+                    <td className="min-w-[140px] px-4 py-4 align-top">
+                      <QuoteNotificationDetails quote={quote} />
                     </td>
                     <td className="min-w-[160px] px-4 py-4 align-top">
                       <QuoteStatusSelect
