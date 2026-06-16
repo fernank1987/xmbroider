@@ -178,7 +178,7 @@ const xmbroiderContent: SiteContent = {
     },
     secondaryCta: {
       label: "Upload Logo Preview",
-      href: "#preview",
+      href: "/preview",
     },
   },
   servicesSection: {
@@ -297,22 +297,22 @@ const xmbroiderContent: SiteContent = {
     ],
   },
   previewSection: {
-    badge: "Coming Soon",
+    badge: "Logo Preview",
     title: "Logo Preview Tool",
     description:
       "Upload your PNG or JPG logo and place it on a shirt, hat, polo, or hoodie. Resize the placement, preview the look, and submit everything for a custom quote — all in one flow.",
     features: [
-      "Upload PNG or JPG logo files",
+      "Upload PNG, JPG, or WebP logo files",
       "Place on shirt, hat, polo, or hoodie",
-      "Resize and adjust placement",
+      "Drag, resize, and adjust placement",
       "Submit for a custom quote",
     ],
     cta: {
-      label: "Request a Quote Instead",
-      href: "#quote",
+      label: "Open Logo Preview Tool",
+      href: "/preview",
     },
-    mockupTitle: "Logo preview mockup area",
-    mockupSubtitle: "Interactive tool launching soon",
+    mockupTitle: "Interactive logo preview",
+    mockupSubtitle: "Upload artwork and submit with your quote request",
   },
   gallery: {
     title: "Gallery",
@@ -388,7 +388,7 @@ const xmbroiderContent: SiteContent = {
     ],
     links: [
       { label: "Request a Quote", href: "#quote" },
-      { label: "Logo Preview", href: "#preview" },
+      { label: "Logo Preview", href: "/preview" },
     ],
   },
 };

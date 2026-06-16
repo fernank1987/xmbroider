@@ -6,8 +6,11 @@ import {
   QUOTE_REQUEST_STATUSES,
   updateQuoteRequestStatus,
   type QuoteRequest,
+  type QuoteRequestSource,
   type QuoteRequestStatus,
 } from "@/lib/firebase/quoteRepository";
+import { PLACEMENT_LABELS, type Placement } from "@/lib/logoPreview";
+import { mmToInches } from "@/lib/logoSize";
 import { siteContent } from "@/lib/siteContent";
 import {
   adminBodyText,
@@ -15,6 +18,7 @@ import {
   adminEmptyIcon,
   adminEmptyIconWrap,
   adminEmptyTitle,
+  adminGalleryThumb,
   adminInput,
   adminLabel,
   adminNotice,
@@ -57,6 +61,175 @@ function getServiceLabel(value: string): string {
     (option) => option.value === value,
   );
   return match?.label ?? value;
+}
+
+function formatSource(source: QuoteRequestSource): string {
+  return source === "logo_preview_tool" ? "Logo preview tool" : "Public quote form";
+}
+
+function formatProductType(quote: QuoteRequest): string {
+  if (quote.productName) {
+    return quote.productName;
+  }
+  if (quote.productLabel) {
+    return quote.productLabel;
+  }
+  if (quote.productType) {
+    return quote.productType;
+  }
+  return "—";
+}
+
+function formatColorName(quote: QuoteRequest): string {
+  return quote.colorName ?? "—";
+}
+
+function formatPlacement(value: string | null): string {
+  if (!value) {
+    return "—";
+  }
+  return PLACEMENT_LABELS[value as Placement] ?? value;
+}
+
+function formatLogoDimensions(quote: QuoteRequest): string | null {
+  if (quote.logoWidthMm !== null) {
+    const widthInches =
+      quote.logoWidthInches !== null
+        ? quote.logoWidthInches
+        : mmToInches(quote.logoWidthMm);
+    let text = `${quote.logoWidthMm} mm (${widthInches.toFixed(2)} in) wide`;
+    if (quote.estimatedLogoHeightMm !== null) {
+      text += ` · ${quote.estimatedLogoHeightMm.toFixed(1)} mm (${mmToInches(
+        quote.estimatedLogoHeightMm,
+      ).toFixed(2)} in) tall`;
+    }
+    if (quote.sizePresetLabel) {
+      text += ` · ${quote.sizePresetLabel}`;
+    }
+    return text;
+  }
+  if (quote.logoSize !== null) {
+    return `${quote.logoSize}% of mockup width (legacy)`;
+  }
+  return null;
+}
+
+function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
+  if (quote.source !== "logo_preview_tool") {
+    return (
+      <p className={`text-sm ${adminTableCellMuted}`}>
+        Source: {formatSource(quote.source)}
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className={`text-sm ${adminTableCellMuted}`}>
+        Source: {formatSource(quote.source)}
+      </p>
+      <dl className="grid gap-2 text-sm sm:grid-cols-2">
+        <div>
+          <dt className={adminLabel}>Product</dt>
+          <dd className={adminTableCellMuted}>{formatProductType(quote)}</dd>
+        </div>
+        <div>
+          <dt className={adminLabel}>Color</dt>
+          <dd className={adminTableCellMuted}>{formatColorName(quote)}</dd>
+        </div>
+        {quote.size && (
+          <div>
+            <dt className={adminLabel}>Size</dt>
+            <dd className={adminTableCellMuted}>{quote.size}</dd>
+          </div>
+        )}
+        {quote.productId && (
+          <div>
+            <dt className={adminLabel}>Product ID</dt>
+            <dd className={adminTableCellMuted}>{quote.productId}</dd>
+          </div>
+        )}
+        <div>
+          <dt className={adminLabel}>Placement</dt>
+          <dd className={adminTableCellMuted}>{formatPlacement(quote.placement)}</dd>
+        </div>
+        {formatLogoDimensions(quote) && (
+          <div>
+            <dt className={adminLabel}>Logo size</dt>
+            <dd className={adminTableCellMuted}>{formatLogoDimensions(quote)}</dd>
+          </div>
+        )}
+        {quote.productPhysicalWidthMm !== null && (
+          <div>
+            <dt className={adminLabel}>Mockup reference width</dt>
+            <dd className={adminTableCellMuted}>{quote.productPhysicalWidthMm} mm</dd>
+          </div>
+        )}
+        {quote.previewCalibrationUsed && (
+          <div>
+            <dt className={adminLabel}>Preview calibration</dt>
+            <dd className={adminTableCellMuted}>Calibrated garment bounds</dd>
+          </div>
+        )}
+      </dl>
+      <div className="flex flex-wrap gap-3">
+        {quote.productImageUrl && (
+          <a
+            href={quote.productImageUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="block w-28"
+          >
+            <div className={adminGalleryThumb}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={quote.productImageUrl}
+                alt={`Product mockup for ${quote.name}`}
+                className="max-h-full max-w-full object-contain p-2"
+              />
+            </div>
+            <p className={`mt-1 text-xs ${adminTableCellSubtle}`}>Product</p>
+          </a>
+        )}
+        {quote.artworkUrl && (
+          <a
+            href={quote.artworkUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="block w-28"
+          >
+            <div className={adminGalleryThumb}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={quote.artworkUrl}
+                alt={`Artwork for ${quote.name}`}
+                className="max-h-full max-w-full object-contain p-2"
+              />
+            </div>
+            <p className={`mt-1 text-xs ${adminTableCellSubtle}`}>Artwork</p>
+          </a>
+        )}
+        {quote.previewImageUrl && (
+          <a
+            href={quote.previewImageUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="block w-28"
+          >
+            <div className={adminGalleryThumb}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={quote.previewImageUrl}
+                alt={`Preview for ${quote.name}`}
+                className="max-h-full max-w-full object-contain p-2"
+              />
+            </div>
+            <p className={`mt-1 text-xs ${adminTableCellSubtle}`}>Preview</p>
+          </a>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function QuoteStatusSelect({
@@ -197,7 +370,7 @@ export default function AdminQuotesEditor() {
           </div>
           <h2 className={adminEmptyTitle}>No quote requests yet</h2>
           <p className={`mt-2 text-sm leading-relaxed ${adminBodyText}`}>
-            New submissions from the public quote form will appear here.
+            New submissions from the public quote form and logo preview tool will appear here.
           </p>
         </div>
       ) : (
@@ -254,6 +427,8 @@ export default function AdminQuotesEditor() {
                     {quote.projectDetails}
                   </p>
                 </div>
+
+                <QuotePreviewDetails quote={quote} />
               </article>
             ))}
           </div>
@@ -267,6 +442,7 @@ export default function AdminQuotesEditor() {
                   <th className={adminTableHeadCell}>Quantity</th>
                   <th className={adminTableHeadCell}>Deadline</th>
                   <th className={adminTableHeadCell}>Project details</th>
+                  <th className={adminTableHeadCell}>Preview</th>
                   <th className={adminTableHeadCell}>Status</th>
                   <th className={adminTableHeadCell}>Submitted</th>
                 </tr>
@@ -295,6 +471,9 @@ export default function AdminQuotesEditor() {
                       <p className="line-clamp-4 whitespace-pre-wrap">
                         {quote.projectDetails}
                       </p>
+                    </td>
+                    <td className="min-w-[180px] px-4 py-4 align-top">
+                      <QuotePreviewDetails quote={quote} />
                     </td>
                     <td className="min-w-[160px] px-4 py-4 align-top">
                       <QuoteStatusSelect

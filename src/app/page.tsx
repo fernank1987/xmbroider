@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import Footer from "./components/Footer";
 import Header from "./components/Header";
 import QuoteForm from "./components/QuoteForm";
@@ -101,12 +102,12 @@ export default async function Home() {
                   >
                     {hero.primaryCta.label}
                   </a>
-                  <a
+                  <Link
                     href={hero.secondaryCta.href}
                     className="inline-flex items-center justify-center rounded-lg border border-border bg-background px-6 py-3.5 text-base font-semibold text-foreground transition-colors hover:bg-foreground/5"
                   >
                     {hero.secondaryCta.label}
-                  </a>
+                  </Link>
                 </div>
               </div>
 
@@ -311,12 +312,12 @@ export default async function Home() {
                     </li>
                   ))}
                 </ul>
-                <a
+                <Link
                   href={previewSection.cta.href}
                   className="mt-8 inline-flex items-center justify-center rounded-lg bg-accent px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
                 >
                   {previewSection.cta.label}
-                </a>
+                </Link>
               </div>
 
               <div
