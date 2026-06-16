@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getVariantImageFallbackSrc } from "@/lib/logoPreviewProducts";
+import { useEffect, useState, type SyntheticEvent } from "react";
+import { APPROXIMATE_MOCKUP_WARNING } from "@/lib/productMockupImage";
+import type { MockupImageSide } from "@/lib/productMockupImage";
 import type { ProductVariant } from "@/lib/logoPreviewProducts";
+import { getVariantPhotoUrl } from "@/lib/productMockupImage";
 
 type ProductMockupProps = {
   variant: ProductVariant;
+  imageSide?: MockupImageSide;
   onImageLoad?: (aspectRatio: number) => void;
+  onApproximateFallback?: (approximate: boolean) => void;
 };
 
 function PoloSvgFallback({
@@ -52,42 +56,68 @@ function PoloSvgFallback({
   );
 }
 
-export default function ProductMockup({ variant, onImageLoad }: ProductMockupProps) {
-  const [imageSrc, setImageSrc] = useState(variant.imageSrc);
-  const [useFallbackArt, setUseFallbackArt] = useState(
-    !variant.imageSrc && !variant.hasImage,
-  );
-
-  const handleImageError = () => {
-    const fallbackSrc = variant.imageSrc
-      ? getVariantImageFallbackSrc(variant.imageSrc)
-      : "";
-    if (fallbackSrc && imageSrc !== fallbackSrc) {
-      setImageSrc(fallbackSrc);
-      return;
-    }
-    setUseFallbackArt(true);
-  };
-
-  const handleImageLoad = (event: React.SyntheticEvent<HTMLImageElement>) => {
+function ProductPhoto({
+  photoUrl,
+  colorName,
+  onImageLoad,
+  onLoadFailed,
+}: {
+  photoUrl: string;
+  colorName: string;
+  onImageLoad?: (aspectRatio: number) => void;
+  onLoadFailed: () => void;
+}) {
+  const handleImageLoad = (event: SyntheticEvent<HTMLImageElement>) => {
     const image = event.currentTarget;
     if (image.naturalWidth > 0 && image.naturalHeight > 0 && onImageLoad) {
       onImageLoad(image.naturalWidth / image.naturalHeight);
     }
   };
 
-  if (useFallbackArt || !variant.imageSrc) {
-    return <PoloSvgFallback swatchColor={variant.swatchColor} onImageLoad={onImageLoad} />;
-  }
-
   return (
     /* eslint-disable-next-line @next/next/no-img-element */
     <img
-      src={imageSrc}
-      alt={`${variant.colorName} product mockup`}
-      onError={handleImageError}
+      src={photoUrl}
+      alt={`${colorName} product mockup`}
+      onError={onLoadFailed}
       onLoad={handleImageLoad}
       className="h-full w-full object-contain opacity-100 [mix-blend-mode:normal]"
+    />
+  );
+}
+
+export default function ProductMockup({
+  variant,
+  imageSide = "front",
+  onImageLoad,
+  onApproximateFallback,
+}: ProductMockupProps) {
+  const photoUrl = getVariantPhotoUrl(variant, imageSide);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const useFallbackArt = !photoUrl || loadFailed;
+
+  useEffect(() => {
+    onApproximateFallback?.(useFallbackArt);
+  }, [useFallbackArt, onApproximateFallback]);
+
+  if (useFallbackArt) {
+    return (
+      <div className="relative h-full w-full">
+        <PoloSvgFallback swatchColor={variant.swatchColor} onImageLoad={onImageLoad} />
+        <p className="pointer-events-none absolute inset-x-0 bottom-2 px-3 text-center text-[11px] text-amber-800">
+          {APPROXIMATE_MOCKUP_WARNING}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <ProductPhoto
+      key={photoUrl}
+      photoUrl={photoUrl}
+      colorName={variant.colorName}
+      onImageLoad={onImageLoad}
+      onLoadFailed={() => setLoadFailed(true)}
     />
   );
 }

@@ -1,5 +1,9 @@
 import type { PreviewCalibrationSource } from "@/lib/previewCalibration";
-import type { CreateQuoteRequestInput, QuoteRequestSource } from "@/lib/firebase/quoteRepository";
+import type {
+  CreateQuoteRequestInput,
+  QuoteLogoPlacement,
+  QuoteRequestSource,
+} from "@/lib/firebase/quoteRepository";
 import { QUOTE_REQUEST_SOURCES } from "@/lib/firebase/quoteRepository";
 
 function readString(value: unknown): string | null {
@@ -27,6 +31,60 @@ function isPreviewCalibrationSource(value: unknown): PreviewCalibrationSource | 
     return value;
   }
   return null;
+}
+
+function parseLogoPlacement(value: unknown): QuoteLogoPlacement | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+
+  const data = value as Record<string, unknown>;
+  const label = readString(data.label);
+  const artworkUrl = readString(data.artworkUrl);
+  const artworkStoragePath = readString(data.artworkStoragePath);
+  const placement = readString(data.placement);
+  const logoWidthMm = readNumber(data.logoWidthMm);
+  const logoWidthInches = readNumber(data.logoWidthInches);
+  const positionPercentX = readNumber(data.positionPercentX);
+  const positionPercentY = readNumber(data.positionPercentY);
+
+  if (
+    !label ||
+    !artworkUrl ||
+    !artworkStoragePath ||
+    !placement ||
+    logoWidthMm === null ||
+    logoWidthInches === null ||
+    positionPercentX === null ||
+    positionPercentY === null
+  ) {
+    return null;
+  }
+
+  return {
+    label,
+    artworkUrl,
+    artworkStoragePath,
+    placement,
+    logoWidthMm,
+    logoWidthInches,
+    estimatedLogoHeightMm: readNumber(data.estimatedLogoHeightMm),
+    positionPercentX,
+    positionPercentY,
+    sizePresetLabel: readString(data.sizePresetLabel),
+  };
+}
+
+function parseLogoPlacements(value: unknown): QuoteLogoPlacement[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const placements = value
+    .map(parseLogoPlacement)
+    .filter((entry): entry is QuoteLogoPlacement => entry !== null);
+
+  return placements.length > 0 ? placements : undefined;
 }
 
 function parsePreviewInput(
@@ -105,6 +163,7 @@ function parsePreviewInput(
     previewCompositeUrl: readString(data.previewCompositeUrl),
     previewCompositeStoragePath: readString(data.previewCompositeStoragePath),
     previewCompositeExportError: readString(data.previewCompositeExportError),
+    logoPlacements: parseLogoPlacements(data.logoPlacements),
   };
 }
 

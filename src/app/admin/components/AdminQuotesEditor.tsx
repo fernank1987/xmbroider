@@ -6,6 +6,7 @@ import {
   markQuoteRequestAsRead,
   QUOTE_REQUEST_STATUSES,
   updateQuoteRequestStatus,
+  type QuoteLogoPlacement,
   type QuoteRequest,
   type QuoteNotificationStatus,
   type QuoteRequestSource,
@@ -124,6 +125,52 @@ function formatLogoDimensions(quote: QuoteRequest): string | null {
   return null;
 }
 
+function formatLogoPlacementDimensions(placement: QuoteLogoPlacement): string {
+  let text = `${placement.logoWidthMm} mm (${placement.logoWidthInches.toFixed(2)} in) wide`;
+  if (placement.estimatedLogoHeightMm !== null) {
+    text += ` · ${placement.estimatedLogoHeightMm.toFixed(1)} mm (${mmToInches(
+      placement.estimatedLogoHeightMm,
+    ).toFixed(2)} in) tall`;
+  }
+  if (placement.sizePresetLabel) {
+    text += ` · ${placement.sizePresetLabel}`;
+  }
+  return text;
+}
+
+function getQuoteLogoEntries(quote: QuoteRequest): QuoteLogoPlacement[] {
+  if (quote.logoPlacements && quote.logoPlacements.length > 0) {
+    return quote.logoPlacements;
+  }
+
+  if (
+    quote.artworkUrl &&
+    quote.artworkStoragePath &&
+    quote.placement &&
+    quote.logoWidthMm !== null &&
+    quote.logoWidthInches !== null &&
+    quote.logoPositionX !== null &&
+    quote.logoPositionY !== null
+  ) {
+    return [
+      {
+        label: "Logo 1",
+        artworkUrl: quote.artworkUrl,
+        artworkStoragePath: quote.artworkStoragePath,
+        placement: quote.placement,
+        logoWidthMm: quote.logoWidthMm,
+        logoWidthInches: quote.logoWidthInches,
+        estimatedLogoHeightMm: quote.estimatedLogoHeightMm,
+        positionPercentX: quote.logoPositionX,
+        positionPercentY: quote.logoPositionY,
+        sizePresetLabel: quote.sizePresetLabel,
+      },
+    ];
+  }
+
+  return [];
+}
+
 function formatCalibrationInfo(quote: QuoteRequest): string | null {
   if (quote.previewCalibrationSource) {
     return PREVIEW_CALIBRATION_SOURCE_LABELS[quote.previewCalibrationSource];
@@ -208,6 +255,7 @@ function QuoteUnreadBadge({ quote }: { quote: QuoteRequest }) {
 
 function QuoteMetaBadges({ quote }: { quote: QuoteRequest }) {
   const badges: string[] = [];
+  const logoEntries = getQuoteLogoEntries(quote);
   badges.push(formatSource(quote.source));
   if (quote.productName) {
     badges.push(quote.productName);
@@ -218,7 +266,11 @@ function QuoteMetaBadges({ quote }: { quote: QuoteRequest }) {
   if (quote.size) {
     badges.push(`Size ${quote.size}`);
   }
-  if (quote.placement) {
+  if (logoEntries.length > 1) {
+    badges.push(`${logoEntries.length} logos`);
+  } else if (logoEntries.length === 1) {
+    badges.push(formatPlacement(logoEntries[0].placement));
+  } else if (quote.placement) {
     badges.push(formatPlacement(quote.placement));
   }
 
@@ -272,9 +324,37 @@ function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
     );
   }
 
+  const logoEntries = getQuoteLogoEntries(quote);
+  const compositePreviewUrl = quote.previewCompositeUrl ?? quote.previewImageUrl;
+
   return (
     <div className="space-y-3">
       <QuoteMetaBadges quote={quote} />
+      {compositePreviewUrl && (
+        <div>
+          <p className={adminLabel}>Customer preview mockup</p>
+          <a
+            href={compositePreviewUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 block max-w-2xl"
+          >
+            <div className={`${adminGalleryThumb} !aspect-[4/3] !h-auto !w-full max-w-2xl`}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={compositePreviewUrl}
+                alt={`Customer preview mockup for ${quote.name}`}
+                className="h-full w-full object-contain p-2"
+              />
+            </div>
+          </a>
+          {quote.previewCompositeExportError && (
+            <p className="mt-2 text-xs text-amber-700 admin-dark:text-amber-400">
+              Export note: {quote.previewCompositeExportError}
+            </p>
+          )}
+        </div>
+      )}
       <dl className="grid gap-2 text-sm sm:grid-cols-2">
         <div>
           <dt className={adminLabel}>Product</dt>
@@ -298,13 +378,40 @@ function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
         )}
         <div>
           <dt className={adminLabel}>Placement</dt>
-          <dd className={adminTableCellMuted}>{formatPlacement(quote.placement)}</dd>
+          <dd className={adminTableCellMuted}>
+            {logoEntries.length > 0
+              ? logoEntries
+                  .map(
+                    (entry) =>
+                      `${entry.label}: ${formatPlacement(entry.placement)}`,
+                  )
+                  .join(" · ")
+              : formatPlacement(quote.placement)}
+          </dd>
         </div>
-        {formatLogoDimensions(quote) && (
-          <div>
-            <dt className={adminLabel}>Logo size</dt>
-            <dd className={adminTableCellMuted}>{formatLogoDimensions(quote)}</dd>
-          </div>
+        {logoEntries.length > 0 ? (
+          logoEntries.map((entry) => (
+            <div key={`${entry.label}-${entry.placement}`} className="sm:col-span-2">
+              <dt className={adminLabel}>{entry.label}</dt>
+              <dd className={`${adminTableCellMuted} space-y-1`}>
+                <p>{formatPlacement(entry.placement)}</p>
+                <p>{formatLogoPlacementDimensions(entry)}</p>
+                {entry.positionPercentX !== null && entry.positionPercentY !== null && (
+                  <p className={`text-xs ${adminTableCellSubtle}`}>
+                    Position {entry.positionPercentX.toFixed(1)}% ·{" "}
+                    {entry.positionPercentY.toFixed(1)}%
+                  </p>
+                )}
+              </dd>
+            </div>
+          ))
+        ) : (
+          formatLogoDimensions(quote) && (
+            <div>
+              <dt className={adminLabel}>Logo size</dt>
+              <dd className={adminTableCellMuted}>{formatLogoDimensions(quote)}</dd>
+            </div>
+          )
         )}
         {quote.productPhysicalWidthMm !== null && (
           <div>
@@ -318,7 +425,9 @@ function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
             <dd className={adminTableCellMuted}>{formatQuoteProductMeta(quote)}</dd>
           </div>
         )}
-        {quote.logoPositionX !== null && quote.logoPositionY !== null && (
+        {quote.logoPositionX !== null &&
+          quote.logoPositionY !== null &&
+          logoEntries.length <= 1 && (
           <div>
             <dt className={adminLabel}>Logo position</dt>
             <dd className={adminTableCellMuted}>
@@ -333,33 +442,29 @@ function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
           </div>
         )}
       </dl>
-      {(quote.previewCompositeUrl || quote.previewImageUrl) && (
-        <div>
-          <p className={adminLabel}>Customer preview mockup</p>
+      <div className="flex flex-wrap gap-3">
+        {logoEntries.map((entry) => (
           <a
-            href={quote.previewCompositeUrl ?? quote.previewImageUrl ?? "#"}
+            key={`${entry.label}-artwork`}
+            href={entry.artworkUrl}
             target="_blank"
             rel="noreferrer"
-            className="mt-2 block max-w-md"
+            className="block w-28"
           >
-            <div className={`${adminGalleryThumb} !aspect-[4/3] !h-auto !w-full max-w-md`}>
+            <div className={adminGalleryThumb}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={quote.previewCompositeUrl ?? quote.previewImageUrl ?? ""}
-                alt={`Customer preview mockup for ${quote.name}`}
-                className="h-full w-full object-contain p-2"
+                src={entry.artworkUrl}
+                alt={`${entry.label} artwork for ${quote.name}`}
+                className="max-h-full max-w-full object-contain p-2"
               />
             </div>
-          </a>
-          {quote.previewCompositeExportError && (
-            <p className="mt-2 text-xs text-amber-700 admin-dark:text-amber-400">
-              Export note: {quote.previewCompositeExportError}
+            <p className={`mt-1 text-xs ${adminTableCellSubtle}`}>
+              {entry.label} artwork
             </p>
-          )}
-        </div>
-      )}
-      <div className="flex flex-wrap gap-3">
-        {quote.artworkUrl && (
+          </a>
+        ))}
+        {!logoEntries.length && quote.artworkUrl && (
           <a
             href={quote.artworkUrl}
             target="_blank"

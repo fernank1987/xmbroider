@@ -13,6 +13,7 @@ const DEFAULT_PLACEMENTS: Placement[] = [
   "right_chest",
   "center_chest",
   "sleeve",
+  "back",
 ];
 
 function mapCategoryToService(category: string): string {
@@ -35,8 +36,10 @@ export function firestoreProductToPreviewProduct(product: Product): PreviewProdu
     label: color.name,
     colorName: color.name,
     imageSrc: color.frontImageUrl ?? "",
+    backImageSrc: color.backImageUrl ?? "",
     swatchColor: color.hex ?? "#cbd5e1",
     hasImage: Boolean(color.frontImageUrl),
+    hasBackImage: Boolean(color.backImageUrl),
     previewCalibration: color.previewCalibration,
   }));
 

@@ -31,6 +31,7 @@ export const GARMENT_PLACEMENT_PRESETS: Record<Placement, { x: number; y: number
   right_chest: { x: 68, y: 38 },
   center_chest: { x: 50, y: 42 },
   sleeve: { x: 18, y: 48 },
+  back: { x: 50, y: 42 },
   hat_front: { x: 50, y: 58 },
 };
 

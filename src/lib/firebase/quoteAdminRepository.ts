@@ -65,6 +65,9 @@ function buildQuoteRequestAdminPayload(
     payload.previewCompositeUrl = input.preview.previewCompositeUrl ?? null;
     payload.previewCompositeStoragePath = input.preview.previewCompositeStoragePath ?? null;
     payload.previewCompositeExportError = input.preview.previewCompositeExportError ?? null;
+    if (input.preview.logoPlacements && input.preview.logoPlacements.length > 0) {
+      payload.logoPlacements = input.preview.logoPlacements;
+    }
   }
 
   return removeUndefinedDeep(payload, { path: "quoteRequests" }) as Record<string, unknown>;

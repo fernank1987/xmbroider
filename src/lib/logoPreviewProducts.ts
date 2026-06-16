@@ -28,8 +28,10 @@ export type ProductVariant = {
   label: string;
   colorName: string;
   imageSrc: string;
+  backImageSrc?: string;
   swatchColor: string;
   hasImage?: boolean;
+  hasBackImage?: boolean;
   previewCalibration?: PreviewCalibration | null;
 };
 
@@ -73,7 +75,7 @@ export const ST550_POLO: PreviewProduct = {
   label: "Sport-Tek ST550 Polo",
   defaultVariantId: "atomic-blue",
   defaultService: "embroidery",
-  placements: ["left_chest", "right_chest", "center_chest", "sleeve"],
+  placements: ["left_chest", "right_chest", "center_chest", "sleeve", "back"],
   variants: ST550_VARIANTS,
   source: "fallback",
 };

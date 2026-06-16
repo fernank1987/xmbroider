@@ -20,9 +20,15 @@ import {
 } from "@/lib/logoPreview";
 import { generatePreviewImageBlob } from "@/lib/logoPreviewExport";
 import {
+  applyPlacementToSlot,
+  createInitialLogoSlots,
+  getEnabledLogoSlots,
+  toQuoteLogoPlacement,
+  type PreviewLogoSlot,
+} from "@/lib/logoPreviewSlots";
+import {
   getDefaultVariant,
   getProductVariant,
-  getVariantImageFallbackSrc,
   LOGO_PREVIEW_PRODUCTS,
   type PreviewProduct,
   type ProductVariant,
@@ -31,7 +37,6 @@ import { listVisibleProducts } from "@/lib/firebase/productRepository";
 import { buildPreviewCatalog, findPreviewProduct } from "@/lib/previewProducts";
 import {
   formatMmWithInches,
-  getDefaultLogoWidthForPlacement,
   getLogoSizePresetsForPlacement,
   getProductionSizeWarning,
   estimateLogoHeightMm,
@@ -40,10 +45,15 @@ import {
   mmToInches,
 } from "@/lib/logoSize";
 import {
+  APPROXIMATE_MOCKUP_WARNING,
+  getMockupImageSideForPlacement,
+  getVariantPhotoUrl,
+  resolveMockupImageSide,
+  type MockupImageSide,
+} from "@/lib/productMockupImage";
+import {
   containerPercentToGarmentLocal,
   garmentLocalToContainerPercent,
-  getGarmentPlacementPreset,
-  GARMENT_PLACEMENT_PRESETS,
   hasCustomPreviewCalibration,
   logoWidthMmToContainerWidthPercent,
   MOCKUP_CONTAINER_ASPECT,
@@ -89,9 +99,6 @@ const emptyQuoteFields: QuoteFields = {
 
 const DEFAULT_PRODUCT = LOGO_PREVIEW_PRODUCTS[0];
 const DEFAULT_VARIANT = getDefaultVariant(DEFAULT_PRODUCT);
-const DEFAULT_PLACEMENT: Placement = "left_chest";
-const INITIAL_GARMENT_PLACEMENT = GARMENT_PLACEMENT_PRESETS[DEFAULT_PLACEMENT];
-const INITIAL_LOGO_SIZE = getDefaultLogoWidthForPlacement(DEFAULT_PLACEMENT);
 const MIN_VIEW_ZOOM = 0.75;
 const MAX_VIEW_ZOOM = 2.5;
 const VIEW_ZOOM_STEP = 0.15;
@@ -122,6 +129,35 @@ function validateQuoteFields(fields: QuoteFields): string | null {
   return null;
 }
 
+function slotVisibleOnMockupSide(slot: PreviewLogoSlot, side: MockupImageSide): boolean {
+  return side === "back" ? slot.placement === "back" : slot.placement !== "back";
+}
+
+function getSlotContainerPosition(
+  slot: PreviewLogoSlot,
+  variant: ProductVariant,
+  product: PreviewProduct,
+  productImageAspect: number,
+) {
+  const calibration = resolvePreviewCalibration(variant, product, slot.placement);
+  return {
+    calibration,
+    position: garmentLocalToContainerPercent(
+      slot.positionX,
+      slot.positionY,
+      calibration.garmentBounds,
+      MOCKUP_CONTAINER_ASPECT,
+      productImageAspect,
+    ),
+    sizePercent: logoWidthMmToContainerWidthPercent(
+      slot.widthMm,
+      calibration,
+      MOCKUP_CONTAINER_ASPECT,
+      productImageAspect,
+    ),
+  };
+}
+
 export default function LogoPreviewTool({ siteId, initialProductId }: LogoPreviewToolProps) {
   const mockupRef = useRef<HTMLDivElement>(null);
   const turnstileRef = useRef<TurnstileWidgetHandle>(null);
@@ -133,18 +169,10 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
   const [variantId, setVariantId] = useState(DEFAULT_VARIANT.id);
   const [selectedSize, setSelectedSize] = useState("");
   const [decorationMethod, setDecorationMethod] = useState("");
-  const [placement, setPlacement] = useState<Placement>(DEFAULT_PLACEMENT);
-  const [logoPositionX, setLogoPositionX] = useState(INITIAL_GARMENT_PLACEMENT.x);
-  const [logoPositionY, setLogoPositionY] = useState(INITIAL_GARMENT_PLACEMENT.y);
-  const [logoWidthMm, setLogoWidthMm] = useState(INITIAL_LOGO_SIZE.widthMm);
-  const [sizePresetLabel, setSizePresetLabel] = useState(INITIAL_LOGO_SIZE.label);
-  const [artworkAspectRatio, setArtworkAspectRatio] = useState<number | null>(null);
+  const [logoSlots, setLogoSlots] = useState<PreviewLogoSlot[]>(createInitialLogoSlots);
+  const [activeSlotIndex, setActiveSlotIndex] = useState(0);
   const [productImageAspect, setProductImageAspect] = useState(1);
-  const [artworkFile, setArtworkFile] = useState<File | null>(null);
-  const artworkPreviewUrl = useMemo(
-    () => (artworkFile ? URL.createObjectURL(artworkFile) : null),
-    [artworkFile],
-  );
+  const [approximateMockup, setApproximateMockup] = useState(false);
   const [quoteFields, setQuoteFields] = useState<QuoteFields>({
     ...emptyQuoteFields,
     serviceNeeded: DEFAULT_PRODUCT.defaultService,
@@ -159,6 +187,16 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
   );
   const [turnstileExpired, setTurnstileExpired] = useState(false);
   const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0);
+
+  const logo1File = logoSlots[0]?.artworkFile ?? null;
+  const logo2File = logoSlots[1]?.artworkFile ?? null;
+  const slotArtworkUrls = useMemo(
+    () => [
+      logo1File ? URL.createObjectURL(logo1File) : null,
+      logo2File ? URL.createObjectURL(logo2File) : null,
+    ],
+    [logo1File, logo2File],
+  );
 
   const resetTurnstile = useCallback(() => {
     setTurnstileExpired(false);
@@ -202,72 +240,85 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
     [selectedProduct, variantId],
   );
   const availablePlacements = selectedProduct.placements;
-
+  const activeSlot = logoSlots[activeSlotIndex] ?? logoSlots[0];
+  const enabledSlots = useMemo(() => getEnabledLogoSlots(logoSlots), [logoSlots]);
+  const mockupSide = useMemo(
+    () => getMockupImageSideForPlacement(activeSlot.placement),
+    [activeSlot.placement],
+  );
   const activeCalibration = useMemo(
-    () => resolvePreviewCalibration(selectedVariant, selectedProduct, placement),
-    [selectedVariant, selectedProduct, placement],
+    () => resolvePreviewCalibration(selectedVariant, selectedProduct, activeSlot.placement),
+    [selectedVariant, selectedProduct, activeSlot.placement],
   );
   const previewCalibrationSource: PreviewCalibrationSource = activeCalibration.source;
   const previewCalibrationUsed = hasCustomPreviewCalibration(selectedVariant);
   const productPhysicalWidthMm = activeCalibration.physicalWidthMm;
-  const logoSizePercent = useMemo(
-    () =>
-      logoWidthMmToContainerWidthPercent(
-        logoWidthMm,
-        activeCalibration,
-        MOCKUP_CONTAINER_ASPECT,
-        productImageAspect,
-      ),
-    [logoWidthMm, activeCalibration, productImageAspect],
-  );
-  const logoContainerPosition = useMemo(
-    () =>
-      garmentLocalToContainerPercent(
-        logoPositionX,
-        logoPositionY,
-        activeCalibration.garmentBounds,
-        MOCKUP_CONTAINER_ASPECT,
-        productImageAspect,
-      ),
-    [
-      logoPositionX,
-      logoPositionY,
-      activeCalibration,
-      productImageAspect,
-    ],
-  );
   const estimatedLogoHeightMm = useMemo(
-    () => estimateLogoHeightMm(logoWidthMm, artworkAspectRatio),
-    [logoWidthMm, artworkAspectRatio],
+    () => estimateLogoHeightMm(activeSlot.widthMm, activeSlot.aspectRatio),
+    [activeSlot.widthMm, activeSlot.aspectRatio],
   );
   const productionSizeWarning = useMemo(
-    () => getProductionSizeWarning(placement, logoWidthMm),
-    [placement, logoWidthMm],
+    () => getProductionSizeWarning(activeSlot.placement, activeSlot.widthMm),
+    [activeSlot.placement, activeSlot.widthMm],
   );
   const logoSizePresets = useMemo(
-    () => getLogoSizePresetsForPlacement(placement),
-    [placement],
+    () => getLogoSizePresetsForPlacement(activeSlot.placement),
+    [activeSlot.placement],
   );
   const decorationOptions = selectedProduct.decorationMethods ?? [];
+  const visibleMockupSlots = useMemo(
+    () =>
+      logoSlots
+        .map((slot, index) => ({ slot, index }))
+        .filter(
+          ({ slot }) => slot.enabled && slotVisibleOnMockupSide(slot, mockupSide),
+        ),
+    [logoSlots, mockupSide],
+  );
+  const hasAnyArtwork = enabledSlots.some((slot) => slot.artworkFile !== null);
 
-  const applyPlacementPreset = (nextPlacement: Placement) => {
-    setPlacement(nextPlacement);
-    const coords = getGarmentPlacementPreset(nextPlacement);
-    setLogoPositionX(coords.x);
-    setLogoPositionY(coords.y);
-    const defaultLogoSize = getDefaultLogoWidthForPlacement(nextPlacement);
-    setLogoWidthMm(defaultLogoSize.widthMm);
-    setSizePresetLabel(defaultLogoSize.label);
+  const updateSlot = (
+    index: number,
+    updater: (slot: PreviewLogoSlot) => PreviewLogoSlot,
+  ) => {
+    setLogoSlots((current) =>
+      current.map((slot, slotIndex) => (slotIndex === index ? updater(slot) : slot)),
+    );
   };
 
-  const setLogoWidthFromMm = (nextWidthMm: number, presetLabel?: string) => {
+  const applyPlacementPreset = (index: number, nextPlacement: Placement) => {
+    updateSlot(index, (slot) => applyPlacementToSlot(slot, nextPlacement));
+  };
+
+  const setLogoWidthFromMm = (index: number, nextWidthMm: number, presetLabel?: string) => {
     const clamped = clamp(
       nextWidthMm,
       LOGO_WIDTH_FINE_TUNE_MIN_MM,
       LOGO_WIDTH_FINE_TUNE_MAX_MM,
     );
-    setLogoWidthMm(clamped);
-    setSizePresetLabel(presetLabel ?? "Custom");
+    updateSlot(index, (slot) => ({
+      ...slot,
+      widthMm: clamped,
+      sizePresetLabel: presetLabel ?? "Custom",
+    }));
+  };
+
+  const resetPlacement = () => {
+    applyPlacementPreset(activeSlotIndex, activeSlot.placement);
+  };
+
+  const resetEditor = () => {
+    const product = findPreviewProduct(catalog, productId) ?? DEFAULT_PRODUCT;
+    setProductId(product.id);
+    setVariantId(getDefaultVariant(product).id);
+    setSelectedSize(product.sizes?.[0] ?? "");
+    setDecorationMethod(product.decorationMethods?.[0] ?? "");
+    setLogoSlots(createInitialLogoSlots());
+    setActiveSlotIndex(0);
+    setQuoteFields({
+      ...emptyQuoteFields,
+      serviceNeeded: product.defaultService,
+    });
   };
 
   useEffect(() => {
@@ -290,7 +341,8 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
             ...current,
             serviceNeeded: initial.defaultService,
           }));
-          applyPlacementPreset(initial.placements[0] ?? DEFAULT_PLACEMENT);
+          setLogoSlots(createInitialLogoSlots());
+          setActiveSlotIndex(0);
         }
       } finally {
         if (!cancelled) {
@@ -307,11 +359,13 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
 
   useEffect(() => {
     return () => {
-      if (artworkPreviewUrl) {
-        URL.revokeObjectURL(artworkPreviewUrl);
-      }
+      slotArtworkUrls.forEach((url) => {
+        if (url) {
+          URL.revokeObjectURL(url);
+        }
+      });
     };
-  }, [artworkPreviewUrl]);
+  }, [slotArtworkUrls]);
 
   const updateQuoteField = (field: keyof QuoteFields, value: string) => {
     setQuoteFields((current) => ({ ...current, [field]: value }));
@@ -329,7 +383,8 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
     setVariantId(defaultVariant.id);
     setSelectedSize(product.sizes?.[0] ?? "");
     setDecorationMethod(product.decorationMethods?.[0] ?? "");
-    applyPlacementPreset(product.placements[0] ?? DEFAULT_PLACEMENT);
+    setLogoSlots(createInitialLogoSlots());
+    setActiveSlotIndex(0);
     setQuoteFields((current) => ({
       ...current,
       serviceNeeded: product.defaultService,
@@ -346,27 +401,20 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
     setProductImageAspect(aspectRatio);
   };
 
-  const resetPlacement = () => {
-    applyPlacementPreset(placement);
-  };
+  const handleApproximateFallback = useCallback((approximate: boolean) => {
+    setApproximateMockup(approximate);
+  }, []);
 
-  const resetEditor = () => {
-    const product = findPreviewProduct(catalog, productId) ?? DEFAULT_PRODUCT;
-    setProductId(product.id);
-    setVariantId(getDefaultVariant(product).id);
-    setSelectedSize(product.sizes?.[0] ?? "");
-    setDecorationMethod(product.decorationMethods?.[0] ?? "");
-    applyPlacementPreset(product.placements[0] ?? DEFAULT_PLACEMENT);
-    setQuoteFields({
-      ...emptyQuoteFields,
-      serviceNeeded: product.defaultService,
-    });
-  };
-
-  const handleArtworkChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleArtworkChange = (
+    slotIndex: number,
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = event.target.files?.[0] ?? null;
-    setArtworkFile(file);
-    setArtworkAspectRatio(null);
+    updateSlot(slotIndex, (slot) => ({
+      ...slot,
+      artworkFile: file,
+      aspectRatio: null,
+    }));
     setErrorMessage(null);
 
     if (file) {
@@ -377,10 +425,16 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
     }
   };
 
-  const handleArtworkPreviewLoad = (event: React.SyntheticEvent<HTMLImageElement>) => {
+  const handleArtworkPreviewLoad = (
+    slotIndex: number,
+    event: React.SyntheticEvent<HTMLImageElement>,
+  ) => {
     const image = event.currentTarget;
     if (image.naturalWidth > 0 && image.naturalHeight > 0) {
-      setArtworkAspectRatio(image.naturalWidth / image.naturalHeight);
+      updateSlot(slotIndex, (slot) => ({
+        ...slot,
+        aspectRatio: image.naturalWidth / image.naturalHeight,
+      }));
     }
   };
 
@@ -404,8 +458,11 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
       MOCKUP_CONTAINER_ASPECT,
       productImageAspect,
     );
-    setLogoPositionX(local.x);
-    setLogoPositionY(local.y);
+    updateSlot(activeSlotIndex, (slot) => ({
+      ...slot,
+      positionX: local.x,
+      positionY: local.y,
+    }));
   };
 
   const handleZoomIn = () => {
@@ -418,6 +475,11 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
 
   const handleZoomReset = () => {
     setViewZoom(1);
+  };
+
+  const handleAddSecondLogo = () => {
+    updateSlot(1, (slot) => ({ ...slot, enabled: true }));
+    setActiveSlotIndex(1);
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -443,15 +505,21 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
       return;
     }
 
-    if (!artworkFile || !artworkPreviewUrl) {
+    if (enabledSlots.length === 0) {
       setErrorMessage("Upload your logo or artwork before submitting.");
       return;
     }
 
-    const artworkValidation = validateQuoteArtworkFile(artworkFile);
-    if (artworkValidation) {
-      setErrorMessage(artworkValidation);
-      return;
+    for (const slot of enabledSlots) {
+      if (!slot.artworkFile) {
+        setErrorMessage(`Upload artwork for ${slot.label} before submitting.`);
+        return;
+      }
+      const artworkValidation = validateQuoteArtworkFile(slot.artworkFile);
+      if (artworkValidation) {
+        setErrorMessage(artworkValidation);
+        return;
+      }
     }
 
     const quoteValidation = validateQuoteFields(quoteFields);
@@ -464,10 +532,43 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
 
     try {
       const quoteRequestId = generateQuoteRequestId(siteId);
-      const artworkUpload = await uploadQuoteArtwork(siteId, quoteRequestId, artworkFile);
-      const productImageSrc =
-        selectedVariant.imageSrc ||
-        getVariantImageFallbackSrc(selectedVariant.imageSrc);
+      const uploadResults = await Promise.all(
+        enabledSlots.map(async (slot) => {
+          const slotIndex = logoSlots.findIndex((entry) => entry.id === slot.id);
+          const upload = await uploadQuoteArtwork(
+            siteId,
+            quoteRequestId,
+            slot.artworkFile!,
+          );
+          return { slot, slotIndex, upload };
+        }),
+      );
+
+      const logoPlacements = uploadResults.map(({ slot, upload }) =>
+        toQuoteLogoPlacement(slot, upload.url, upload.path),
+      );
+      const primarySlot = enabledSlots[0];
+      const primaryUpload = uploadResults.find(({ slot }) => slot.id === primarySlot.id)?.upload;
+      const primaryCalibration = resolvePreviewCalibration(
+        selectedVariant,
+        selectedProduct,
+        primarySlot.placement,
+      );
+      const primaryLogoSizePercent = logoWidthMmToContainerWidthPercent(
+        primarySlot.widthMm,
+        primaryCalibration,
+        MOCKUP_CONTAINER_ASPECT,
+        productImageAspect,
+      );
+      const exportMockupSide = resolveMockupImageSide(
+        enabledSlots.map((slot) => slot.placement),
+      );
+      const productPhotoUrl = getVariantPhotoUrl(selectedVariant, exportMockupSide);
+      const fallbackCalibration = resolvePreviewCalibration(
+        selectedVariant,
+        selectedProduct,
+        exportMockupSide === "back" ? "back" : "left_chest",
+      );
 
       let previewImageUrl: string | null = null;
       let previewImageStoragePath: string | null = null;
@@ -476,28 +577,47 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
       let previewCompositeExportError: string | null = null;
 
       try {
-        const previewBlob = await generatePreviewImageBlob({
-          productImageSrc,
-          productImageFallbackSrc: selectedVariant.imageSrc
-            ? getVariantImageFallbackSrc(selectedVariant.imageSrc)
-            : undefined,
+        const exportLogos = uploadResults
+          .map(({ slot, slotIndex }) => {
+            const artworkUrl = slotArtworkUrls[slotIndex];
+            if (!artworkUrl) {
+              return null;
+            }
+            return {
+              artworkObjectUrl: artworkUrl,
+              logoGarmentPositionX: slot.positionX,
+              logoGarmentPositionY: slot.positionY,
+              logoWidthMm: slot.widthMm,
+              calibration: resolvePreviewCalibration(
+                selectedVariant,
+                selectedProduct,
+                slot.placement,
+              ),
+              placement: slot.placement,
+            };
+          })
+          .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+        const previewResult = await generatePreviewImageBlob({
+          productImageSrc: productPhotoUrl,
           fallbackSwatchColor: selectedVariant.swatchColor,
-          artworkObjectUrl: artworkPreviewUrl,
-          logoGarmentPositionX: logoPositionX,
-          logoGarmentPositionY: logoPositionY,
-          logoWidthMm,
-          calibration: activeCalibration,
+          mockupSide: exportMockupSide,
+          baseCalibration: fallbackCalibration,
+          logos: exportLogos,
         });
 
-        if (previewBlob) {
+        if (previewResult.blob) {
           const [previewUpload, compositeUpload] = await Promise.all([
-            uploadQuotePreviewImage(siteId, quoteRequestId, previewBlob),
-            uploadQuoteCompositePreview(siteId, quoteRequestId, previewBlob),
+            uploadQuotePreviewImage(siteId, quoteRequestId, previewResult.blob),
+            uploadQuoteCompositePreview(siteId, quoteRequestId, previewResult.blob),
           ]);
           previewImageUrl = previewUpload.url;
           previewImageStoragePath = previewUpload.path;
           previewCompositeUrl = compositeUpload.url;
           previewCompositeStoragePath = compositeUpload.path;
+          if (previewResult.approximateFallback) {
+            previewCompositeExportError = APPROXIMATE_MOCKUP_WARNING;
+          }
         } else {
           previewCompositeExportError =
             "Composite preview image could not be generated.";
@@ -505,6 +625,10 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
       } catch (exportError) {
         previewCompositeExportError = getSubmitErrorMessage(exportError);
       }
+
+      const placementSummary = enabledSlots
+        .map((slot) => `${slot.label}: ${PLACEMENT_LABELS[slot.placement]}`)
+        .join(" · ");
 
       const { quoteId } = await submitQuoteRequest({
         siteId,
@@ -528,27 +652,31 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
             colorName: selectedVariant.colorName,
             size: selectedSize || null,
             productImageUrl: selectedVariant.imageSrc || null,
-            placement,
-            logoSize: logoSizePercent,
-            logoWidthMm,
-            logoWidthInches: mmToInches(logoWidthMm),
-            estimatedLogoHeightMm,
+            placement: primarySlot.placement,
+            logoSize: primaryLogoSizePercent,
+            logoWidthMm: primarySlot.widthMm,
+            logoWidthInches: mmToInches(primarySlot.widthMm),
+            estimatedLogoHeightMm: estimateLogoHeightMm(
+              primarySlot.widthMm,
+              primarySlot.aspectRatio,
+            ),
             productPhysicalWidthMm,
-            sizePresetLabel,
+            sizePresetLabel: primarySlot.sizePresetLabel,
             previewCalibrationUsed,
             previewCalibrationSource,
             productBrand: selectedProduct.brand ?? null,
             productMaterial: selectedProduct.material ?? null,
             decorationMethod: decorationMethod.trim() || null,
-            logoPositionX,
-            logoPositionY,
-            artworkUrl: artworkUpload.url,
-            artworkStoragePath: artworkUpload.path,
+            logoPositionX: primarySlot.positionX,
+            logoPositionY: primarySlot.positionY,
+            artworkUrl: primaryUpload?.url ?? "",
+            artworkStoragePath: primaryUpload?.path ?? "",
             previewImageUrl,
             previewImageStoragePath,
             previewCompositeUrl,
             previewCompositeStoragePath,
             previewCompositeExportError,
+            logoPlacements,
           },
         },
       });
@@ -557,10 +685,11 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
         console.log("[quote] created", {
           quoteId,
           source: "logo_preview_tool",
+          logoCount: logoPlacements.length,
+          placementSummary,
         });
       }
 
-      setArtworkFile(null);
       resetEditor();
       setSubmitted(true);
     } catch (error) {
@@ -574,7 +703,6 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
   const handleSubmitAnother = () => {
     setSubmitted(false);
     setErrorMessage(null);
-    setArtworkFile(null);
     setTurnstileToken(turnstileDevBypass ? getInitialTurnstileToken() : null);
     setTurnstileExpired(false);
     setTurnstileWidgetKey((current) => current + 1);
@@ -703,27 +831,63 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
         </div>
 
         <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm sm:p-6">
-          <h2 className="text-lg font-semibold text-foreground">2. Upload artwork</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-foreground">2. Upload artwork</h2>
+            {!logoSlots[1].enabled && (
+              <button
+                type="button"
+                onClick={handleAddSecondLogo}
+                disabled={submitting}
+                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5"
+              >
+                Add second logo
+              </button>
+            )}
+          </div>
           <p className="mt-2 text-sm text-muted">
             PNG, JPG, or WebP up to 10MB. Use a transparent logo when possible.
           </p>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {logoSlots.map((slot, index) =>
+              slot.enabled ? (
+                <button
+                  key={slot.id}
+                  type="button"
+                  onClick={() => setActiveSlotIndex(index)}
+                  disabled={submitting}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    activeSlotIndex === index
+                      ? "border-accent bg-accent/10 text-foreground"
+                      : "border-border text-muted hover:text-foreground"
+                  }`}
+                >
+                  {slot.label}
+                </button>
+              ) : null,
+            )}
+          </div>
+
           <input
             type="file"
             accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
             disabled={submitting}
-            onChange={handleArtworkChange}
+            onChange={(event) => handleArtworkChange(activeSlotIndex, event)}
             className="mt-4 block w-full text-sm text-muted file:mr-4 file:rounded-lg file:border-0 file:bg-accent file:px-4 file:py-2.5 file:text-sm file:font-semibold file:text-white hover:file:bg-accent-hover"
           />
-          {artworkFile && (
+          {activeSlot.artworkFile && (
             <p className="mt-2 text-sm text-foreground">
-              Selected: <span className="font-medium">{artworkFile.name}</span>
+              Selected ({activeSlot.label}):{" "}
+              <span className="font-medium">{activeSlot.artworkFile.name}</span>
             </p>
           )}
         </div>
 
         <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-foreground">3. Place your logo</h2>
+            <h2 className="text-lg font-semibold text-foreground">
+              3. Place {activeSlot.label.toLowerCase()}
+            </h2>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -778,10 +942,10 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
               <button
                 key={option}
                 type="button"
-                onClick={() => applyPlacementPreset(option)}
+                onClick={() => applyPlacementPreset(activeSlotIndex, option)}
                 disabled={submitting}
                 className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                  placement === option
+                  activeSlot.placement === option
                     ? "border-accent bg-accent/10 text-foreground"
                     : "border-border text-muted hover:text-foreground"
                 }`}
@@ -810,36 +974,58 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
               }}
             >
               <div className="relative h-full w-full">
-              <ProductMockup
-                key={selectedVariant.id}
-                variant={selectedVariant}
-                onImageLoad={handleProductImageLoad}
-              />
-              {artworkPreviewUrl ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img
-                  src={artworkPreviewUrl}
-                  alt="Uploaded logo preview"
-                  draggable={false}
-                  onLoad={handleArtworkPreviewLoad}
-                  onPointerDown={(event) => {
-                    setDragging(true);
-                    event.currentTarget.setPointerCapture(event.pointerId);
-                    updatePositionFromPointer(event.clientX, event.clientY);
-                  }}
-                  style={{
-                    left: `${logoContainerPosition.x}%`,
-                    top: `${logoContainerPosition.y}%`,
-                    width: `${logoSizePercent}%`,
-                    height: "auto",
-                    transform: "translate(-50%, -50%)",
-                  }}
-                  className="absolute cursor-move touch-none select-none object-contain opacity-100 [mix-blend-mode:normal]"
+                <ProductMockup
+                  key={`${selectedVariant.id}-${mockupSide}`}
+                  variant={selectedVariant}
+                  imageSide={mockupSide}
+                  onImageLoad={handleProductImageLoad}
+                  onApproximateFallback={handleApproximateFallback}
                 />
-              ) : null}
+                {visibleMockupSlots.map(({ slot, index }) => {
+                  const artworkUrl = slotArtworkUrls[index];
+                  if (!artworkUrl) {
+                    return null;
+                  }
+                  const overlay = getSlotContainerPosition(
+                    slot,
+                    selectedVariant,
+                    selectedProduct,
+                    productImageAspect,
+                  );
+                  const isActive = index === activeSlotIndex;
+                  return (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      key={slot.id}
+                      src={artworkUrl}
+                      alt={`${slot.label} preview`}
+                      draggable={false}
+                      onLoad={(event) => handleArtworkPreviewLoad(index, event)}
+                      onPointerDown={(event) => {
+                        if (!isActive) {
+                          setActiveSlotIndex(index);
+                        }
+                        setDragging(true);
+                        event.currentTarget.setPointerCapture(event.pointerId);
+                        updatePositionFromPointer(event.clientX, event.clientY);
+                      }}
+                      style={{
+                        left: `${overlay.position.x}%`,
+                        top: `${overlay.position.y}%`,
+                        width: `${overlay.sizePercent}%`,
+                        height: "auto",
+                        transform: "translate(-50%, -50%)",
+                        outline: isActive ? "2px solid rgba(59, 130, 246, 0.75)" : undefined,
+                      }}
+                      className={`absolute touch-none select-none object-contain opacity-100 [mix-blend-mode:normal] ${
+                        isActive ? "cursor-move" : "cursor-pointer"
+                      }`}
+                    />
+                  );
+                })}
               </div>
             </div>
-            {!artworkPreviewUrl ? (
+            {!hasAnyArtwork ? (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6">
                 <p className="rounded-lg border border-slate-200/80 bg-white/85 px-4 py-2.5 text-center text-sm text-slate-600 shadow-sm backdrop-blur-[1px]">
                   Upload your logo to place it on this product.
@@ -848,15 +1034,25 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
             ) : null}
           </div>
 
+          {approximateMockup && (
+            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+              {APPROXIMATE_MOCKUP_WARNING}
+            </p>
+          )}
+
           <p className="mt-3 text-sm text-muted">
             {selectedProduct.label} · {selectedVariant.colorName}
+            {mockupSide === "back" ? " · Back view" : " · Front view"}
+            {enabledSlots.length > 1 ? ` · ${enabledSlots.length} logos` : ""}
           </p>
 
           <div className="mt-5 space-y-4">
             <div>
-              <p className="text-sm font-medium text-foreground">Logo width</p>
+              <p className="text-sm font-medium text-foreground">
+                {activeSlot.label} width
+              </p>
               <p className="mt-1 text-sm text-muted">
-                {formatMmWithInches(logoWidthMm)}
+                {formatMmWithInches(activeSlot.widthMm)}
                 {estimatedLogoHeightMm !== null && (
                   <span>
                     {" "}
@@ -865,8 +1061,10 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
                   </span>
                 )}
               </p>
-              {sizePresetLabel && (
-                <p className="mt-1 text-xs text-muted">Preset: {sizePresetLabel}</p>
+              {activeSlot.sizePresetLabel && (
+                <p className="mt-1 text-xs text-muted">
+                  Preset: {activeSlot.sizePresetLabel}
+                </p>
               )}
             </div>
 
@@ -876,9 +1074,12 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
                   key={preset.id}
                   type="button"
                   disabled={submitting}
-                  onClick={() => setLogoWidthFromMm(preset.widthMm, preset.label)}
+                  onClick={() =>
+                    setLogoWidthFromMm(activeSlotIndex, preset.widthMm, preset.label)
+                  }
                   className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
-                    logoWidthMm === preset.widthMm && sizePresetLabel === preset.label
+                    activeSlot.widthMm === preset.widthMm &&
+                    activeSlot.sizePresetLabel === preset.label
                       ? "border-accent bg-accent/10 text-foreground"
                       : "border-border text-muted hover:border-accent/40 hover:text-foreground"
                   }`}
@@ -900,18 +1101,18 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
                   min={LOGO_WIDTH_FINE_TUNE_MIN_MM}
                   max={LOGO_WIDTH_FINE_TUNE_MAX_MM}
                   step={1}
-                  value={logoWidthMm}
+                  value={activeSlot.widthMm}
                   disabled={submitting}
                   onChange={(event) => {
                     const value = Number(event.target.value);
                     if (!Number.isNaN(value)) {
-                      setLogoWidthFromMm(value);
+                      setLogoWidthFromMm(activeSlotIndex, value);
                     }
                   }}
                   className="mt-1 w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
                 />
                 <p className="mt-1 text-xs text-muted">
-                  {mmToInches(logoWidthMm).toFixed(2)} inches · mockup ref{" "}
+                  {mmToInches(activeSlot.widthMm).toFixed(2)} inches · mockup ref{" "}
                   {productPhysicalWidthMm} mm wide
                 </p>
               </div>
@@ -925,9 +1126,11 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
                   min={LOGO_WIDTH_FINE_TUNE_MIN_MM}
                   max={LOGO_WIDTH_FINE_TUNE_MAX_MM}
                   step={1}
-                  value={logoWidthMm}
-                  disabled={submitting || !artworkPreviewUrl}
-                  onChange={(event) => setLogoWidthFromMm(Number(event.target.value))}
+                  value={activeSlot.widthMm}
+                  disabled={submitting || !activeSlot.artworkFile}
+                  onChange={(event) =>
+                    setLogoWidthFromMm(activeSlotIndex, Number(event.target.value))
+                  }
                   className="mt-3 w-full accent-accent"
                 />
               </div>
@@ -1085,7 +1288,9 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
               required
               value={quoteFields.projectDetails}
               disabled={submitting}
-              placeholder={`${selectedProduct.label} · ${selectedVariant.colorName} · ${PLACEMENT_LABELS[placement]}`}
+              placeholder={`${selectedProduct.label} · ${selectedVariant.colorName} · ${enabledSlots
+                .map((slot) => PLACEMENT_LABELS[slot.placement])
+                .join(" + ")}`}
               onChange={(event) => updateQuoteField("projectDetails", event.target.value)}
               className={inputClassName}
             />

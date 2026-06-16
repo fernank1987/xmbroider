@@ -45,6 +45,19 @@ export const QUOTE_NOTIFICATION_STATUSES = [
 
 export type QuoteNotificationStatus = (typeof QUOTE_NOTIFICATION_STATUSES)[number];
 
+export type QuoteLogoPlacement = {
+  label: string;
+  artworkUrl: string;
+  artworkStoragePath: string;
+  placement: string;
+  logoWidthMm: number;
+  logoWidthInches: number;
+  estimatedLogoHeightMm: number | null;
+  positionPercentX: number;
+  positionPercentY: number;
+  sizePresetLabel: string | null;
+};
+
 export type QuoteRequestPreviewData = {
   productId: string | null;
   productName: string | null;
@@ -75,6 +88,7 @@ export type QuoteRequestPreviewData = {
   previewCompositeUrl: string | null;
   previewCompositeStoragePath: string | null;
   previewCompositeExportError: string | null;
+  logoPlacements: QuoteLogoPlacement[] | null;
 };
 
 export type QuoteRequest = {
@@ -135,6 +149,7 @@ export type CreateQuoteRequestInput = {
     previewCompositeUrl?: string | null;
     previewCompositeStoragePath?: string | null;
     previewCompositeExportError?: string | null;
+    logoPlacements?: QuoteLogoPlacement[];
   };
 };
 
@@ -207,6 +222,60 @@ function readPreviewCalibrationSource(value: unknown): PreviewCalibrationSource 
   return null;
 }
 
+function parseQuoteLogoPlacement(value: unknown): QuoteLogoPlacement | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const label = readString(record.label);
+  const artworkUrl = readString(record.artworkUrl);
+  const artworkStoragePath = readString(record.artworkStoragePath);
+  const placement = readString(record.placement);
+  const logoWidthMm = readNumber(record.logoWidthMm);
+  const logoWidthInches = readNumber(record.logoWidthInches);
+  const positionPercentX = readNumber(record.positionPercentX);
+  const positionPercentY = readNumber(record.positionPercentY);
+
+  if (
+    !label ||
+    !artworkUrl ||
+    !artworkStoragePath ||
+    !placement ||
+    logoWidthMm === null ||
+    logoWidthInches === null ||
+    positionPercentX === null ||
+    positionPercentY === null
+  ) {
+    return null;
+  }
+
+  return {
+    label,
+    artworkUrl,
+    artworkStoragePath,
+    placement,
+    logoWidthMm,
+    logoWidthInches,
+    estimatedLogoHeightMm: readNumber(record.estimatedLogoHeightMm),
+    positionPercentX,
+    positionPercentY,
+    sizePresetLabel: readString(record.sizePresetLabel),
+  };
+}
+
+function parseQuoteLogoPlacements(value: unknown): QuoteLogoPlacement[] | null {
+  if (!Array.isArray(value) || value.length === 0) {
+    return null;
+  }
+
+  const placements = value
+    .map(parseQuoteLogoPlacement)
+    .filter((entry): entry is QuoteLogoPlacement => entry !== null);
+
+  return placements.length > 0 ? placements : null;
+}
+
 function parseQuoteRequestPreviewData(data: DocumentData): QuoteRequestPreviewData {
   return {
     productId: readString(data.productId),
@@ -239,6 +308,7 @@ function parseQuoteRequestPreviewData(data: DocumentData): QuoteRequestPreviewDa
     previewCompositeUrl: readString(data.previewCompositeUrl),
     previewCompositeStoragePath: readString(data.previewCompositeStoragePath),
     previewCompositeExportError: readString(data.previewCompositeExportError),
+    logoPlacements: parseQuoteLogoPlacements(data.logoPlacements),
   };
 }
 
@@ -364,6 +434,9 @@ function buildQuoteRequestWritePayload(
     payload.previewCompositeUrl = input.preview.previewCompositeUrl ?? null;
     payload.previewCompositeStoragePath = input.preview.previewCompositeStoragePath ?? null;
     payload.previewCompositeExportError = input.preview.previewCompositeExportError ?? null;
+    if (input.preview.logoPlacements && input.preview.logoPlacements.length > 0) {
+      payload.logoPlacements = input.preview.logoPlacements;
+    }
   }
 
   return payload;
@@ -404,6 +477,7 @@ function emptyQuoteRequestPreviewData(): QuoteRequestPreviewData {
     previewCompositeUrl: null,
     previewCompositeStoragePath: null,
     previewCompositeExportError: null,
+    logoPlacements: null,
   };
 }
 
@@ -447,6 +521,7 @@ export function buildQuoteRequestFromInput(
         previewCompositeUrl: preview.previewCompositeUrl ?? null,
         previewCompositeStoragePath: preview.previewCompositeStoragePath ?? null,
         previewCompositeExportError: preview.previewCompositeExportError ?? null,
+        logoPlacements: preview.logoPlacements ?? null,
       }
     : emptyQuoteRequestPreviewData();
 

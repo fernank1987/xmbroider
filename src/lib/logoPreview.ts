@@ -3,6 +3,7 @@ export const PLACEMENTS = [
   "right_chest",
   "center_chest",
   "sleeve",
+  "back",
   "hat_front",
 ] as const;
 
@@ -20,6 +21,7 @@ export const PLACEMENT_PRESETS: Record<Placement, PlacementPreset> = {
   right_chest: { x: 62, y: 40, size: 22 },
   center_chest: { x: 50, y: 44, size: 28 },
   sleeve: { x: 20, y: 48, size: 18 },
+  back: { x: 50, y: 42, size: 28 },
   hat_front: { x: 50, y: 58, size: 32 },
 };
 
@@ -28,6 +30,7 @@ export const PLACEMENT_LABELS: Record<Placement, string> = {
   right_chest: "Right chest",
   center_chest: "Center chest",
   sleeve: "Sleeve",
+  back: "Back",
   hat_front: "Hat front",
 };
 
