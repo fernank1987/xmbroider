@@ -1,4 +1,5 @@
 import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
+import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 
@@ -54,6 +55,15 @@ export function getAdminFirestore(): Firestore | null {
     return null;
   }
   return getFirestore(app);
+}
+
+/** Returns Firebase Auth Admin SDK when configured. */
+export function getAdminAuth(): Auth | null {
+  const app = initializeAdminApp();
+  if (!app) {
+    return null;
+  }
+  return getAuth(app);
 }
 
 /** Returns Firebase Storage bucket for server-side uploads. */

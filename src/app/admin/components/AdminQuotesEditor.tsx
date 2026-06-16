@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { deleteQuoteRequest, type DeleteQuoteRequestResult } from "@/lib/adminQuoteRequestsClient";
 import {
   listQuoteRequests,
   markQuoteRequestAsRead,
@@ -42,6 +43,7 @@ import type { SaveStatusApi } from "../lib/useSaveStatus";
 import { useSaveStatus } from "../lib/useSaveStatus";
 import AdminSaveButton from "./AdminSaveButton";
 import SaveStatusMessage from "./SaveStatusMessage";
+import { useAdminAuth } from "./AdminAuthProvider";
 
 const SITE_ID = siteContent.siteId;
 
@@ -289,25 +291,81 @@ function QuoteRowActions({
   quote,
   saveStatus,
   onMarkReviewed,
+  onDeleted,
 }: {
   quote: QuoteRequest;
   saveStatus: SaveStatusApi;
   onMarkReviewed: (quoteId: string) => void;
+  onDeleted: (result: DeleteQuoteRequestResult) => void;
 }) {
-  if (!isQuoteUnread(quote)) {
-    return null;
-  }
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {isQuoteUnread(quote) ? (
+        <AdminSaveButton
+          actionKey={`quote:${quote.id}:markRead`}
+          saveStatus={saveStatus}
+          idleLabel="Mark as reviewed"
+          savingLabel="Saving…"
+          savedLabel="Reviewed"
+          variant="outline"
+          size="xs"
+          onClick={() => onMarkReviewed(quote.id)}
+        />
+      ) : null}
+      <QuoteDeleteButton quote={quote} saveStatus={saveStatus} onDeleted={onDeleted} />
+    </div>
+  );
+}
+
+function QuoteDeleteButton({
+  quote,
+  saveStatus,
+  onDeleted,
+}: {
+  quote: QuoteRequest;
+  saveStatus: SaveStatusApi;
+  onDeleted: (result: DeleteQuoteRequestResult) => void;
+}) {
+  const { user } = useAdminAuth();
+
+  const handleDelete = () => {
+    if (
+      !window.confirm(
+        "Delete this quote request and its uploaded files? This cannot be undone.",
+      )
+    ) {
+      return;
+    }
+
+    if (!user) {
+      return;
+    }
+
+    void saveStatus.runAction(
+      `quote:${quote.id}:delete`,
+      async () => {
+        const idToken = await user.getIdToken();
+        const result = await deleteQuoteRequest({
+          quoteRequestId: quote.id,
+          idToken,
+        });
+        onDeleted(result);
+      },
+      { savedMessage: "Deleted" },
+    );
+  };
 
   return (
     <AdminSaveButton
-      actionKey={`quote:${quote.id}:markRead`}
+      actionKey={`quote:${quote.id}:delete`}
       saveStatus={saveStatus}
-      idleLabel="Mark as reviewed"
-      savingLabel="Saving…"
-      savedLabel="Reviewed"
-      variant="outline"
+      idleLabel="Delete"
+      savingLabel="Deleting…"
+      savedLabel="Deleted"
+      variant="danger"
       size="xs"
-      onClick={() => onMarkReviewed(quote.id)}
+      onClick={handleDelete}
+      disabled={!user}
     />
   );
 }
@@ -653,6 +711,19 @@ export default function AdminQuotesEditor() {
     );
   };
 
+  const handleQuoteDeleted = (result: DeleteQuoteRequestResult) => {
+    setQuotes((current) => current.filter((quote) => quote.id !== result.quoteRequestId));
+    const fileLabel = result.deletedFilesCount === 1 ? "file" : "files";
+    setStatusMessage(
+      `Quote request deleted. ${result.deletedFilesCount} uploaded ${fileLabel} removed.`,
+    );
+    if (result.warnings?.length) {
+      setErrorMessage(`Some files could not be removed: ${result.warnings.join(" ")}`);
+    } else {
+      setErrorMessage(null);
+    }
+  };
+
   const unreadCount = useMemo(() => countUnreadQuotes(quotes), [quotes]);
 
   return (
@@ -738,6 +809,7 @@ export default function AdminQuotesEditor() {
                       quote={quote}
                       saveStatus={saveStatus}
                       onMarkReviewed={handleMarkAsReviewed}
+                      onDeleted={handleQuoteDeleted}
                     />
                   </div>
                 </div>
@@ -836,6 +908,7 @@ export default function AdminQuotesEditor() {
                           quote={quote}
                           saveStatus={saveStatus}
                           onMarkReviewed={handleMarkAsReviewed}
+                          onDeleted={handleQuoteDeleted}
                         />
                       </div>
                     </td>
