@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ProductMockup from "./ProductMockup";
 import QuoteSuccessPanel from "./QuoteSuccessPanel";
 import TurnstileWidget, { type TurnstileWidgetHandle } from "./TurnstileWidget";
@@ -53,6 +53,7 @@ import {
 import { siteContent } from "@/lib/siteContent";
 import {
   getInitialTurnstileToken,
+  getTurnstileStatusText,
   isQuoteSubmissionAvailable,
   isTurnstileDevBypassActive,
   isTurnstileSubmitReady,
@@ -156,15 +157,41 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
   const [turnstileToken, setTurnstileToken] = useState<string | null>(
     getInitialTurnstileToken(),
   );
+  const [turnstileExpired, setTurnstileExpired] = useState(false);
+  const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0);
 
-  const resetTurnstile = () => {
+  const resetTurnstile = useCallback(() => {
+    setTurnstileExpired(false);
     if (turnstileDevBypass) {
       setTurnstileToken(getInitialTurnstileToken());
       return;
     }
     turnstileRef.current?.reset();
-    setTurnstileToken(null);
-  };
+  }, [turnstileDevBypass]);
+
+  const handleTurnstileTokenChange = useCallback((token: string | null) => {
+    setTurnstileToken(token);
+    if (token) {
+      setTurnstileExpired(false);
+      setErrorMessage(null);
+    }
+  }, []);
+
+  const handleTurnstileExpire = useCallback(() => {
+    setTurnstileExpired(true);
+    setErrorMessage(TURNSTILE_EXPIRED_MESSAGE);
+  }, []);
+
+  const handleTurnstileError = useCallback(() => {
+    setTurnstileExpired(false);
+    setErrorMessage(TURNSTILE_MISSING_CHECK_MESSAGE);
+  }, []);
+
+  const turnstileStatusText = getTurnstileStatusText({
+    token: turnstileToken,
+    expired: turnstileExpired,
+    devBypass: turnstileDevBypass,
+  });
 
   const selectedProduct = useMemo(
     () => findPreviewProduct(catalog, productId) ?? catalog[0] ?? DEFAULT_PRODUCT,
@@ -534,7 +561,6 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
       }
 
       setArtworkFile(null);
-      resetTurnstile();
       resetEditor();
       setSubmitted(true);
     } catch (error) {
@@ -549,7 +575,9 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
     setSubmitted(false);
     setErrorMessage(null);
     setArtworkFile(null);
-    resetTurnstile();
+    setTurnstileToken(turnstileDevBypass ? getInitialTurnstileToken() : null);
+    setTurnstileExpired(false);
+    setTurnstileWidgetKey((current) => current + 1);
     resetEditor();
   };
 
@@ -1064,12 +1092,26 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
           </div>
 
           {!turnstileDevBypass && (
-            <TurnstileWidget
-              ref={turnstileRef}
-              onTokenChange={setTurnstileToken}
-              onExpire={() => setErrorMessage(TURNSTILE_EXPIRED_MESSAGE)}
-              onError={() => setErrorMessage(TURNSTILE_MISSING_CHECK_MESSAGE)}
-            />
+            <div className="space-y-2">
+              <TurnstileWidget
+                key={turnstileWidgetKey}
+                ref={turnstileRef}
+                onTokenChange={handleTurnstileTokenChange}
+                onExpire={handleTurnstileExpire}
+                onError={handleTurnstileError}
+              />
+              <p
+                className={`text-sm ${
+                  isTurnstileSubmitReady(turnstileToken)
+                    ? "text-emerald-700"
+                    : turnstileExpired
+                      ? "text-amber-700"
+                      : "text-muted"
+                }`}
+              >
+                {turnstileStatusText}
+              </p>
+            </div>
           )}
 
           <button

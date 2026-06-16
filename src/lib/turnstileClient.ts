@@ -28,6 +28,23 @@ export function isTurnstileSubmitReady(token: string | null): boolean {
   return Boolean(token?.trim());
 }
 
+export function getTurnstileStatusText(options: {
+  token: string | null;
+  expired: boolean;
+  devBypass: boolean;
+}): string {
+  if (options.devBypass) {
+    return "Verified. You can submit now.";
+  }
+  if (options.expired) {
+    return "Verification expired. Please verify again.";
+  }
+  if (isTurnstileSubmitReady(options.token)) {
+    return "Verified. You can submit now.";
+  }
+  return "Complete the anti-spam check to submit.";
+}
+
 export function isQuoteSubmissionAvailable(): boolean {
   if (process.env.NODE_ENV === "production") {
     return isTurnstileSiteKeyConfigured();

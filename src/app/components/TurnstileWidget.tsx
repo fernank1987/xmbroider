@@ -47,14 +47,23 @@ const TurnstileWidget = forwardRef<TurnstileWidgetHandle, TurnstileWidgetProps>(
   function TurnstileWidget({ onTokenChange, onExpire, onError }, ref) {
     const containerRef = useRef<HTMLDivElement>(null);
     const widgetIdRef = useRef<string | null>(null);
+    const onTokenChangeRef = useRef(onTokenChange);
+    const onExpireRef = useRef(onExpire);
+    const onErrorRef = useRef(onError);
     const siteKey = getTurnstileSiteKey();
+
+    useEffect(() => {
+      onTokenChangeRef.current = onTokenChange;
+      onExpireRef.current = onExpire;
+      onErrorRef.current = onError;
+    });
 
     const reset = useCallback(() => {
       if (widgetIdRef.current && window.turnstile) {
         window.turnstile.reset(widgetIdRef.current);
       }
-      onTokenChange(null);
-    }, [onTokenChange]);
+      onTokenChangeRef.current(null);
+    }, []);
 
     useImperativeHandle(ref, () => ({ reset }), [reset]);
 
@@ -66,36 +75,34 @@ const TurnstileWidget = forwardRef<TurnstileWidgetHandle, TurnstileWidgetProps>(
       let cancelled = false;
 
       const renderWidget = () => {
-        if (cancelled || !containerRef.current || !window.turnstile) {
+        if (
+          cancelled ||
+          !containerRef.current ||
+          !window.turnstile ||
+          widgetIdRef.current
+        ) {
           return;
-        }
-
-        if (widgetIdRef.current) {
-          window.turnstile.remove(widgetIdRef.current);
-          widgetIdRef.current = null;
         }
 
         widgetIdRef.current = window.turnstile.render(containerRef.current, {
           sitekey: siteKey,
-          callback: (token) => onTokenChange(token),
+          callback: (token) => onTokenChangeRef.current(token),
           "expired-callback": () => {
-            onTokenChange(null);
-            onExpire?.();
+            onTokenChangeRef.current(null);
+            onExpireRef.current?.();
           },
           "error-callback": () => {
-            onTokenChange(null);
-            onError?.();
+            onTokenChangeRef.current(null);
+            onErrorRef.current?.();
           },
         });
       };
 
       const existingScript = document.getElementById(TURNSTILE_SCRIPT_ID);
-      if (existingScript) {
-        if (window.turnstile) {
-          renderWidget();
-        } else {
-          existingScript.addEventListener("load", renderWidget);
-        }
+      if (window.turnstile) {
+        renderWidget();
+      } else if (existingScript) {
+        existingScript.addEventListener("load", renderWidget, { once: true });
       } else {
         const script = document.createElement("script");
         script.id = TURNSTILE_SCRIPT_ID;
@@ -113,7 +120,7 @@ const TurnstileWidget = forwardRef<TurnstileWidgetHandle, TurnstileWidgetProps>(
           widgetIdRef.current = null;
         }
       };
-    }, [siteKey, onTokenChange, onExpire, onError]);
+    }, [siteKey]);
 
     if (!siteKey) {
       return null;

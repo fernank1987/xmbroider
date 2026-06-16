@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import QuoteSuccessPanel from "./QuoteSuccessPanel";
 import TurnstileWidget, { type TurnstileWidgetHandle } from "./TurnstileWidget";
 import {
   getInitialTurnstileToken,
+  getTurnstileStatusText,
   isQuoteSubmissionAvailable,
   isTurnstileDevBypassActive,
   isTurnstileSubmitReady,
@@ -74,19 +75,39 @@ export default function QuoteForm({ siteId, form }: QuoteFormProps) {
   const [turnstileToken, setTurnstileToken] = useState<string | null>(
     getInitialTurnstileToken(),
   );
+  const [turnstileExpired, setTurnstileExpired] = useState(false);
+  const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const submissionAvailable = isQuoteSubmissionAvailable();
 
-  const resetTurnstile = () => {
+  const resetTurnstile = useCallback(() => {
+    setTurnstileExpired(false);
     if (turnstileDevBypass) {
       setTurnstileToken(getInitialTurnstileToken());
       return;
     }
     turnstileRef.current?.reset();
-    setTurnstileToken(null);
-  };
+  }, [turnstileDevBypass]);
+
+  const handleTurnstileTokenChange = useCallback((token: string | null) => {
+    setTurnstileToken(token);
+    if (token) {
+      setTurnstileExpired(false);
+      setErrorMessage(null);
+    }
+  }, []);
+
+  const handleTurnstileExpire = useCallback(() => {
+    setTurnstileExpired(true);
+    setErrorMessage(TURNSTILE_EXPIRED_MESSAGE);
+  }, []);
+
+  const handleTurnstileError = useCallback(() => {
+    setTurnstileExpired(false);
+    setErrorMessage(TURNSTILE_MISSING_CHECK_MESSAGE);
+  }, []);
 
   const updateField = (field: keyof QuoteFormFields, value: string) => {
     setFields((current) => ({ ...current, [field]: value }));
@@ -97,7 +118,9 @@ export default function QuoteForm({ siteId, form }: QuoteFormProps) {
     setSubmitted(false);
     setErrorMessage(null);
     setFields(emptyFields);
-    resetTurnstile();
+    setTurnstileToken(turnstileDevBypass ? getInitialTurnstileToken() : null);
+    setTurnstileExpired(false);
+    setTurnstileWidgetKey((current) => current + 1);
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -147,7 +170,6 @@ export default function QuoteForm({ siteId, form }: QuoteFormProps) {
       }
 
       setFields(emptyFields);
-      resetTurnstile();
       setSubmitted(true);
     } catch (error) {
       setErrorMessage(getSubmitErrorMessage(error));
@@ -156,6 +178,12 @@ export default function QuoteForm({ siteId, form }: QuoteFormProps) {
       setSubmitting(false);
     }
   };
+
+  const turnstileStatusText = getTurnstileStatusText({
+    token: turnstileToken,
+    expired: turnstileExpired,
+    devBypass: turnstileDevBypass,
+  });
 
   const inputClassName =
     "mt-1 w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted/60 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:cursor-not-allowed disabled:opacity-60";
@@ -323,12 +351,26 @@ export default function QuoteForm({ siteId, form }: QuoteFormProps) {
       </div>
 
       {!turnstileDevBypass && (
-        <TurnstileWidget
-          ref={turnstileRef}
-          onTokenChange={setTurnstileToken}
-          onExpire={() => setErrorMessage(TURNSTILE_EXPIRED_MESSAGE)}
-          onError={() => setErrorMessage(TURNSTILE_MISSING_CHECK_MESSAGE)}
-        />
+        <div className="space-y-2">
+          <TurnstileWidget
+            key={turnstileWidgetKey}
+            ref={turnstileRef}
+            onTokenChange={handleTurnstileTokenChange}
+            onExpire={handleTurnstileExpire}
+            onError={handleTurnstileError}
+          />
+          <p
+            className={`text-sm ${
+              isTurnstileSubmitReady(turnstileToken)
+                ? "text-emerald-700"
+                : turnstileExpired
+                  ? "text-amber-700"
+                  : "text-muted"
+            }`}
+          >
+            {turnstileStatusText}
+          </p>
+        </div>
       )}
 
       <button
