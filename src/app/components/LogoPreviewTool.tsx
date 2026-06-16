@@ -3,14 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import ProductMockup from "./ProductMockup";
-import {
-  createQuoteRequest,
-  generateQuoteRequestId,
-} from "@/lib/firebase/quoteRepository";
-import {
-  buildQuoteNotificationPayload,
-  notifyQuoteRequestCreated,
-} from "@/lib/quoteNotificationClient";
+import TurnstileWidget, { type TurnstileWidgetHandle } from "./TurnstileWidget";
+import { generateQuoteRequestId } from "@/lib/firebase/quoteRepository";
 import {
   uploadQuoteArtwork,
   uploadQuoteCompositePreview,
@@ -56,6 +50,15 @@ import {
   type PreviewCalibrationSource,
 } from "@/lib/previewCalibration";
 import { siteContent } from "@/lib/siteContent";
+import {
+  getInitialTurnstileToken,
+  isQuoteSubmissionAvailable,
+  isTurnstileDevBypassActive,
+  isTurnstileSubmitReady,
+  submitQuoteRequest,
+  TURNSTILE_EXPIRED_MESSAGE,
+  TURNSTILE_MISSING_CHECK_MESSAGE,
+} from "@/lib/turnstileClient";
 
 type LogoPreviewToolProps = {
   siteId: string;
@@ -119,6 +122,9 @@ function validateQuoteFields(fields: QuoteFields): string | null {
 
 export default function LogoPreviewTool({ siteId, initialProductId }: LogoPreviewToolProps) {
   const mockupRef = useRef<HTMLDivElement>(null);
+  const turnstileRef = useRef<TurnstileWidgetHandle>(null);
+  const turnstileDevBypass = isTurnstileDevBypassActive();
+  const submissionAvailable = isQuoteSubmissionAvailable();
   const [catalog, setCatalog] = useState<PreviewProduct[]>(LOGO_PREVIEW_PRODUCTS);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [productId, setProductId] = useState(initialProductId ?? DEFAULT_PRODUCT.id);
@@ -146,6 +152,18 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [viewZoom, setViewZoom] = useState(1);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(
+    getInitialTurnstileToken(),
+  );
+
+  const resetTurnstile = () => {
+    if (turnstileDevBypass) {
+      setTurnstileToken(getInitialTurnstileToken());
+      return;
+    }
+    turnstileRef.current?.reset();
+    setTurnstileToken(null);
+  };
 
   const selectedProduct = useMemo(
     () => findPreviewProduct(catalog, productId) ?? catalog[0] ?? DEFAULT_PRODUCT,
@@ -388,6 +406,18 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
       return;
     }
 
+    if (!submissionAvailable) {
+      setErrorMessage(
+        "Preview submissions are temporarily unavailable. Please contact us directly.",
+      );
+      return;
+    }
+
+    if (!isTurnstileSubmitReady(turnstileToken)) {
+      setErrorMessage(TURNSTILE_MISSING_CHECK_MESSAGE);
+      return;
+    }
+
     if (!artworkFile || !artworkPreviewUrl) {
       setErrorMessage("Upload your logo or artwork before submitting.");
       return;
@@ -451,9 +481,11 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
         previewCompositeExportError = getSubmitErrorMessage(exportError);
       }
 
-      const created = await createQuoteRequest(
+      const { quoteId } = await submitQuoteRequest({
         siteId,
-        {
+        turnstileToken: turnstileToken!,
+        quoteRequestId,
+        quote: {
           name: quoteFields.name,
           email: quoteFields.email,
           phone: quoteFields.phone || undefined,
@@ -494,25 +526,24 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
             previewCompositeExportError,
           },
         },
-        { quoteRequestId },
-      );
+      });
 
       if (process.env.NODE_ENV === "development") {
         console.log("[quote] created", {
-          quoteId: created.id,
-          source: created.source,
+          quoteId,
+          source: "logo_preview_tool",
         });
       }
-
-      void notifyQuoteRequestCreated(buildQuoteNotificationPayload(siteId, created));
 
       setSuccessMessage(
         "Your logo preview and quote request were submitted. We will follow up soon.",
       );
       setArtworkFile(null);
+      resetTurnstile();
       resetEditor();
     } catch (error) {
       setErrorMessage(getSubmitErrorMessage(error));
+      resetTurnstile();
     } finally {
       setSubmitting(false);
     }
@@ -920,6 +951,12 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
           </div>
         )}
 
+        {turnstileDevBypass && (
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Turnstile keys are not configured. Development anti-spam bypass is active.
+          </div>
+        )}
+
         {errorMessage && (
           <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
             {errorMessage}
@@ -1041,9 +1078,23 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
             />
           </div>
 
+          {!turnstileDevBypass && (
+            <TurnstileWidget
+              ref={turnstileRef}
+              onTokenChange={setTurnstileToken}
+              onExpire={() => setErrorMessage(TURNSTILE_EXPIRED_MESSAGE)}
+              onError={() => setErrorMessage(TURNSTILE_MISSING_CHECK_MESSAGE)}
+            />
+          )}
+
           <button
             type="submit"
-            disabled={submitting || !isFirebaseConfigured}
+            disabled={
+              submitting ||
+              !isFirebaseConfigured ||
+              !submissionAvailable ||
+              !isTurnstileSubmitReady(turnstileToken)
+            }
             className="w-full rounded-lg bg-accent px-6 py-3.5 text-base font-semibold text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
           >
             {submitting ? "Submitting preview…" : "Submit preview quote request"}

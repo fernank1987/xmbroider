@@ -1,12 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { createQuoteRequest } from "@/lib/firebase/quoteRepository";
-import { isFirebaseConfigured } from "@/lib/firebase/client";
+import { useRef, useState } from "react";
+import TurnstileWidget, { type TurnstileWidgetHandle } from "./TurnstileWidget";
 import {
-  buildQuoteNotificationPayload,
-  notifyQuoteRequestCreated,
-} from "@/lib/quoteNotificationClient";
+  getInitialTurnstileToken,
+  isQuoteSubmissionAvailable,
+  isTurnstileDevBypassActive,
+  isTurnstileSubmitReady,
+  submitQuoteRequest,
+  TURNSTILE_EXPIRED_MESSAGE,
+  TURNSTILE_MISSING_CHECK_MESSAGE,
+} from "@/lib/turnstileClient";
 import type { SiteContent } from "@/lib/siteContent";
 
 type QuoteFormProps = {
@@ -61,10 +65,25 @@ function validateFields(fields: QuoteFormFields): string | null {
 }
 
 export default function QuoteForm({ siteId, form }: QuoteFormProps) {
+  const turnstileRef = useRef<TurnstileWidgetHandle>(null);
+  const turnstileDevBypass = isTurnstileDevBypassActive();
   const [fields, setFields] = useState<QuoteFormFields>(emptyFields);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(
+    getInitialTurnstileToken(),
+  );
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const submissionAvailable = isQuoteSubmissionAvailable();
+
+  const resetTurnstile = () => {
+    if (turnstileDevBypass) {
+      setTurnstileToken(getInitialTurnstileToken());
+      return;
+    }
+    turnstileRef.current?.reset();
+    setTurnstileToken(null);
+  };
 
   const updateField = (field: keyof QuoteFormFields, value: string) => {
     setFields((current) => ({ ...current, [field]: value }));
@@ -77,7 +96,7 @@ export default function QuoteForm({ siteId, form }: QuoteFormProps) {
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    if (!isFirebaseConfigured) {
+    if (!submissionAvailable) {
       setErrorMessage(
         "Quote requests are temporarily unavailable. Please contact us directly by phone or email.",
       );
@@ -90,32 +109,41 @@ export default function QuoteForm({ siteId, form }: QuoteFormProps) {
       return;
     }
 
+    if (!isTurnstileSubmitReady(turnstileToken)) {
+      setErrorMessage(TURNSTILE_MISSING_CHECK_MESSAGE);
+      return;
+    }
+
     setSubmitting(true);
 
     try {
-      const created = await createQuoteRequest(siteId, {
-        name: fields.name,
-        email: fields.email,
-        phone: fields.phone || undefined,
-        serviceNeeded: fields.serviceNeeded,
-        quantity: fields.quantity || undefined,
-        deadline: fields.deadline || undefined,
-        projectDetails: fields.projectDetails,
+      const { quoteId } = await submitQuoteRequest({
+        siteId,
+        turnstileToken: turnstileToken!,
+        quote: {
+          name: fields.name,
+          email: fields.email,
+          phone: fields.phone || undefined,
+          serviceNeeded: fields.serviceNeeded,
+          quantity: fields.quantity || undefined,
+          deadline: fields.deadline || undefined,
+          projectDetails: fields.projectDetails,
+        },
       });
 
       if (process.env.NODE_ENV === "development") {
         console.log("[quote] created", {
-          quoteId: created.id,
-          source: created.source,
+          quoteId,
+          source: "public_quote_form",
         });
       }
 
-      void notifyQuoteRequestCreated(buildQuoteNotificationPayload(siteId, created));
-
       setFields(emptyFields);
+      resetTurnstile();
       setSuccessMessage("Quote request received. We'll follow up soon.");
     } catch (error) {
       setErrorMessage(getSubmitErrorMessage(error));
+      resetTurnstile();
     } finally {
       setSubmitting(false);
     }
@@ -126,10 +154,16 @@ export default function QuoteForm({ siteId, form }: QuoteFormProps) {
 
   return (
     <form className="mt-10 space-y-4 text-left" onSubmit={(event) => void handleSubmit(event)}>
-      {!isFirebaseConfigured && (
+      {!submissionAvailable && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Online quote submission is unavailable right now. Please use the contact
           details on this page to reach us directly.
+        </div>
+      )}
+
+      {turnstileDevBypass && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Turnstile keys are not configured. Development anti-spam bypass is active.
         </div>
       )}
 
@@ -271,9 +305,20 @@ export default function QuoteForm({ siteId, form }: QuoteFormProps) {
         />
       </div>
 
+      {!turnstileDevBypass && (
+        <TurnstileWidget
+          ref={turnstileRef}
+          onTokenChange={setTurnstileToken}
+          onExpire={() => setErrorMessage(TURNSTILE_EXPIRED_MESSAGE)}
+          onError={() => setErrorMessage(TURNSTILE_MISSING_CHECK_MESSAGE)}
+        />
+      )}
+
       <button
         type="submit"
-        disabled={submitting || !isFirebaseConfigured}
+        disabled={
+          submitting || !submissionAvailable || !isTurnstileSubmitReady(turnstileToken)
+        }
         className="w-full rounded-lg bg-accent px-6 py-3.5 text-base font-semibold text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         {submitting ? "Submitting…" : form.submitLabel}

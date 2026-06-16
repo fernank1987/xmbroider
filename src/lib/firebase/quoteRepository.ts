@@ -288,7 +288,7 @@ function parseQuoteRequest(id: string, data: DocumentData): QuoteRequest | null 
   };
 }
 
-function validateCreateQuoteRequestInput(input: CreateQuoteRequestInput): string | null {
+export function validateCreateQuoteRequestInput(input: CreateQuoteRequestInput): string | null {
   if (!input.name.trim()) {
     return "Name is required.";
   }
@@ -408,7 +408,7 @@ function emptyQuoteRequestPreviewData(): QuoteRequestPreviewData {
 }
 
 /** Builds the in-memory quote returned to public clients (no Firestore read-back). */
-function buildQuoteRequestFromInput(
+export function buildQuoteRequestFromInput(
   quoteRequestId: string,
   input: CreateQuoteRequestInput,
 ): QuoteRequest {

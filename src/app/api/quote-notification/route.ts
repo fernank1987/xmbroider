@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { sendQuoteNotificationEmails } from "@/lib/email/sendQuoteNotification";
 import type { QuoteNotificationPayload } from "@/lib/email/quoteNotificationTypes";
-import { getAdminFirestore } from "@/lib/firebase/admin";
-import { FieldValue } from "firebase-admin/firestore";
+import { persistQuoteNotificationStatus } from "@/lib/quoteNotificationServer";
 
 // TODO: Add rate limiting (e.g. per-IP throttle) before production scale.
 
@@ -65,37 +64,6 @@ function validatePayload(body: unknown): { payload: QuoteNotificationPayload } |
   };
 }
 
-async function persistNotificationStatus(
-  siteId: string,
-  quoteId: string,
-  status: "sent" | "failed" | "not_configured",
-  errorSummary?: string,
-): Promise<void> {
-  const db = getAdminFirestore();
-  if (!db) {
-    return;
-  }
-
-  const update: Record<string, unknown> = {
-    notificationStatus: status,
-    updatedAt: FieldValue.serverTimestamp(),
-  };
-
-  if (status === "sent") {
-    update.notificationSentAt = FieldValue.serverTimestamp();
-    update.notificationErrorSummary = null;
-  } else if (status === "failed" || status === "not_configured") {
-    update.notificationErrorSummary = errorSummary ?? null;
-  }
-
-  await db
-    .collection("sites")
-    .doc(siteId)
-    .collection("quoteRequests")
-    .doc(quoteId)
-    .set(update, { merge: true });
-}
-
 export async function POST(request: Request) {
   let body: unknown;
   try {
@@ -112,7 +80,7 @@ export async function POST(request: Request) {
   const result = await sendQuoteNotificationEmails(validated.payload);
 
   try {
-    await persistNotificationStatus(
+    await persistQuoteNotificationStatus(
       validated.payload.siteId,
       validated.payload.quoteId,
       result.notificationStatus,
