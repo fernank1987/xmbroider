@@ -136,7 +136,7 @@ const xmbroiderContent: SiteContent = {
   brand: {
     name: "XMBroider",
     tagline: "Custom Embroidery & DTF Apparel",
-    phone: "(401) 000-0000",
+    phone: "(401) 500-5300",
     email: "info@xmbroider.com",
     location: "Woonsocket, Rhode Island",
   },

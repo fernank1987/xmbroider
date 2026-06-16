@@ -4,6 +4,7 @@ import Link from "next/link";
 import Footer from "./components/Footer";
 import { GalleryPlaceholderIcon } from "./components/GalleryPlaceholderIcon";
 import Header from "./components/Header";
+import HomeStructuredData from "./components/HomeStructuredData";
 import HomePreviewShowcase from "./components/HomePreviewShowcase";
 import HomePreviewShowcaseFallback from "./components/HomePreviewShowcaseFallback";
 import QuoteForm from "./components/QuoteForm";
@@ -13,6 +14,7 @@ import { loadPublicSiteContent } from "@/lib/firebase/siteContentRepository";
 import { getDefaultVariant } from "@/lib/logoPreviewProducts";
 import { buildPreviewCatalog } from "@/lib/previewProducts";
 import { getServiceIconPath } from "@/lib/serviceIcons";
+import { buildHomeStructuredData } from "@/lib/structuredData";
 import type { GalleryItem as FallbackGalleryItem } from "@/lib/siteContent";
 
 export const metadata: Metadata = {
@@ -68,9 +70,14 @@ export default async function Home() {
     gallery,
     quoteSection,
   } = content;
+  const structuredData = buildHomeStructuredData({
+    brand: content.brand,
+    seo: content.seo,
+  });
 
   return (
     <>
+      <HomeStructuredData data={structuredData} />
       <Header
         content={{
           brand: content.brand,
