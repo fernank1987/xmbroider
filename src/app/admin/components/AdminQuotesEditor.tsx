@@ -38,6 +38,9 @@ import {
   adminTableHead,
   adminTableHeadCell,
   adminTableWrap,
+  adminTableScroll,
+  adminTableActionsHeadCell,
+  adminTableActionsCell,
 } from "../lib/adminStyles";
 import type { SaveStatusApi } from "../lib/useSaveStatus";
 import { useSaveStatus } from "../lib/useSaveStatus";
@@ -299,7 +302,7 @@ function QuoteRowActions({
   onDeleted: (result: DeleteQuoteRequestResult) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-col items-start gap-2">
       {isQuoteUnread(quote) ? (
         <AdminSaveButton
           actionKey={`quote:${quote.id}:markRead`}
@@ -370,7 +373,13 @@ function QuoteDeleteButton({
   );
 }
 
-function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
+function QuotePreviewDetails({
+  quote,
+  compact = false,
+}: {
+  quote: QuoteRequest;
+  compact?: boolean;
+}) {
   if (quote.source !== "logo_preview_tool") {
     return (
       <div className="space-y-2">
@@ -385,9 +394,10 @@ function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
   const logoEntries = getQuoteLogoEntries(quote);
   const compositePreviewUrl = quote.previewCompositeUrl;
   const hasCompositePreview = Boolean(compositePreviewUrl);
+  const previewSizeClass = compact ? "max-w-[140px]" : "max-w-2xl";
 
   return (
-    <div className="space-y-3">
+    <div className={compact ? "space-y-2" : "space-y-3"}>
       <QuoteMetaBadges quote={quote} />
       {hasCompositePreview && (
         <div>
@@ -396,9 +406,9 @@ function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
             href={compositePreviewUrl!}
             target="_blank"
             rel="noreferrer"
-            className="mt-2 block max-w-2xl"
+            className={`mt-2 block ${previewSizeClass}`}
           >
-            <div className={`${adminGalleryThumb} !aspect-[4/3] !h-auto !w-full max-w-2xl`}>
+            <div className={`${adminGalleryThumb} !aspect-[4/3] !h-auto !w-full ${previewSizeClass}`}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={compositePreviewUrl!}
@@ -419,6 +429,8 @@ function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
           Export note: {quote.previewCompositeExportError}
         </p>
       )}
+      {!compact && (
+      <>
       <dl className="grid gap-2 text-sm sm:grid-cols-2">
         <div>
           <dt className={adminLabel}>Product</dt>
@@ -585,6 +597,8 @@ function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
             </a>
           )}
       </div>
+      </>
+      )}
     </div>
   );
 }
@@ -805,6 +819,7 @@ export default function AdminQuotesEditor() {
                       saveStatus={saveStatus}
                       onStatusChange={handleStatusChange}
                     />
+                    <label className={`${adminLabel} mt-3 block`}>Actions</label>
                     <QuoteRowActions
                       quote={quote}
                       saveStatus={saveStatus}
@@ -849,76 +864,79 @@ export default function AdminQuotesEditor() {
           </div>
 
           <div className={`hidden lg:block ${adminTableWrap}`}>
-            <table className="min-w-full text-left text-sm">
-              <thead className={adminTableHead}>
-                <tr>
-                  <th className={adminTableHeadCell}>Customer</th>
-                  <th className={adminTableHeadCell}>Service</th>
-                  <th className={adminTableHeadCell}>Quantity</th>
-                  <th className={adminTableHeadCell}>Deadline</th>
-                  <th className={adminTableHeadCell}>Project details</th>
-                  <th className={adminTableHeadCell}>Preview</th>
-                  <th className={adminTableHeadCell}>Email</th>
-                  <th className={adminTableHeadCell}>Status</th>
-                  <th className={adminTableHeadCell}>Submitted</th>
-                </tr>
-              </thead>
-              <tbody className={adminTableBody}>
-                {quotes.map((quote) => (
-                  <tr key={quote.id}>
-                    <td className="px-4 py-4 align-top">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className={adminTableCellTitle}>{quote.name}</p>
-                        <QuoteUnreadBadge quote={quote} />
-                      </div>
-                      <p className={`mt-1 ${adminTableCellMuted}`}>{quote.email}</p>
-                      <p className={`mt-1 ${adminTableCellSubtle}`}>
-                        {quote.phone || "No phone"}
-                      </p>
-                    </td>
-                    <td className={`px-4 py-4 align-top ${adminTableCellMuted}`}>
-                      {serviceLabels[quote.serviceNeeded] ??
-                        getServiceLabel(quote.serviceNeeded)}
-                    </td>
-                    <td className={`px-4 py-4 align-top ${adminTableCellMuted}`}>
-                      {quote.quantity || "—"}
-                    </td>
-                    <td className={`px-4 py-4 align-top ${adminTableCellMuted}`}>
-                      {quote.deadline || "—"}
-                    </td>
-                    <td className={`max-w-xs px-4 py-4 align-top ${adminTableCellMuted}`}>
-                      <p className="line-clamp-4 whitespace-pre-wrap">
-                        {quote.projectDetails}
-                      </p>
-                    </td>
-                    <td className="min-w-[180px] px-4 py-4 align-top">
-                      <QuotePreviewDetails quote={quote} />
-                    </td>
-                    <td className="min-w-[140px] px-4 py-4 align-top">
-                      <QuoteNotificationDetails quote={quote} />
-                    </td>
-                    <td className="min-w-[160px] px-4 py-4 align-top">
-                      <QuoteStatusSelect
-                        quote={quote}
-                        saveStatus={saveStatus}
-                        onStatusChange={handleStatusChange}
-                      />
-                      <div className="mt-2">
+            <div className={adminTableScroll}>
+              <table className="min-w-full text-left text-sm">
+                <thead className={adminTableHead}>
+                  <tr>
+                    <th className={adminTableHeadCell}>Customer</th>
+                    <th className={adminTableHeadCell}>Service</th>
+                    <th className={adminTableHeadCell}>Quantity</th>
+                    <th className={adminTableHeadCell}>Deadline</th>
+                    <th className={adminTableHeadCell}>Project details</th>
+                    <th className={adminTableHeadCell}>Preview</th>
+                    <th className={adminTableHeadCell}>Email</th>
+                    <th className={adminTableHeadCell}>Status</th>
+                    <th className={adminTableHeadCell}>Submitted</th>
+                    <th className={adminTableActionsHeadCell}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody className={adminTableBody}>
+                  {quotes.map((quote) => (
+                    <tr key={quote.id}>
+                      <td className="px-4 py-4 align-top">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className={adminTableCellTitle}>{quote.name}</p>
+                          <QuoteUnreadBadge quote={quote} />
+                        </div>
+                        <p className={`mt-1 ${adminTableCellMuted}`}>{quote.email}</p>
+                        <p className={`mt-1 ${adminTableCellSubtle}`}>
+                          {quote.phone || "No phone"}
+                        </p>
+                      </td>
+                      <td className={`px-4 py-4 align-top ${adminTableCellMuted}`}>
+                        {serviceLabels[quote.serviceNeeded] ??
+                          getServiceLabel(quote.serviceNeeded)}
+                      </td>
+                      <td className={`px-4 py-4 align-top ${adminTableCellMuted}`}>
+                        {quote.quantity || "—"}
+                      </td>
+                      <td className={`px-4 py-4 align-top ${adminTableCellMuted}`}>
+                        {quote.deadline || "—"}
+                      </td>
+                      <td className={`max-w-xs px-4 py-4 align-top ${adminTableCellMuted}`}>
+                        <p className="line-clamp-4 whitespace-pre-wrap">
+                          {quote.projectDetails}
+                        </p>
+                      </td>
+                      <td className="min-w-[180px] max-w-xs px-4 py-4 align-top">
+                        <QuotePreviewDetails quote={quote} compact />
+                      </td>
+                      <td className="min-w-[140px] px-4 py-4 align-top">
+                        <QuoteNotificationDetails quote={quote} />
+                      </td>
+                      <td className="min-w-[160px] px-4 py-4 align-top">
+                        <QuoteStatusSelect
+                          quote={quote}
+                          saveStatus={saveStatus}
+                          onStatusChange={handleStatusChange}
+                        />
+                      </td>
+                      <td className={`px-4 py-4 align-top ${adminTableCellSubtle}`}>
+                        {formatQuoteDate(quote.createdAt)}
+                      </td>
+                      <td className={adminTableActionsCell}>
                         <QuoteRowActions
                           quote={quote}
                           saveStatus={saveStatus}
                           onMarkReviewed={handleMarkAsReviewed}
                           onDeleted={handleQuoteDeleted}
                         />
-                      </div>
-                    </td>
-                    <td className={`px-4 py-4 align-top ${adminTableCellSubtle}`}>
-                      {formatQuoteDate(quote.createdAt)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       )}

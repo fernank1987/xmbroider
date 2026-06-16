@@ -117,6 +117,14 @@ export const adminGalleryThumbIcon = "h-10 w-10 text-slate-400 admin-dark:text-z
 
 export const adminTableWrap = "overflow-hidden rounded-xl border border-slate-200 admin-dark:border-zinc-800";
 
+export const adminTableScroll = "overflow-x-auto";
+
+export const adminTableActionsHeadCell =
+  "sticky right-0 z-20 min-w-[9.5rem] border-l border-slate-200 bg-slate-50 px-4 py-3 font-medium text-slate-600 admin-dark:border-zinc-800 admin-dark:bg-zinc-900 admin-dark:text-zinc-400";
+
+export const adminTableActionsCell =
+  "sticky right-0 z-10 min-w-[9.5rem] border-l border-slate-200 bg-white px-4 py-4 align-top shadow-[-4px_0_8px_-4px_rgba(15,23,42,0.08)] admin-dark:border-zinc-800 admin-dark:bg-zinc-950 admin-dark:shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.35)]";
+
 export const adminTableHead =
   "border-b border-slate-200 bg-slate-50 admin-dark:border-zinc-800 admin-dark:bg-zinc-900";
 
