@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import QuoteSuccessPanel from "./QuoteSuccessPanel";
 import TurnstileWidget, { type TurnstileWidgetHandle } from "./TurnstileWidget";
 import {
   getInitialTurnstileToken,
@@ -38,6 +39,8 @@ const emptyFields: QuoteFormFields = {
   projectDetails: "",
 };
 
+const QUOTE_SUCCESS_MESSAGE = "Quote request received. We'll follow up soon.";
+
 function getSubmitErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -73,7 +76,7 @@ export default function QuoteForm({ siteId, form }: QuoteFormProps) {
   );
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
   const submissionAvailable = isQuoteSubmissionAvailable();
 
   const resetTurnstile = () => {
@@ -88,13 +91,18 @@ export default function QuoteForm({ siteId, form }: QuoteFormProps) {
   const updateField = (field: keyof QuoteFormFields, value: string) => {
     setFields((current) => ({ ...current, [field]: value }));
     setErrorMessage(null);
-    setSuccessMessage(null);
+  };
+
+  const handleSubmitAnother = () => {
+    setSubmitted(false);
+    setErrorMessage(null);
+    setFields(emptyFields);
+    resetTurnstile();
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setErrorMessage(null);
-    setSuccessMessage(null);
 
     if (!submissionAvailable) {
       setErrorMessage(
@@ -140,7 +148,7 @@ export default function QuoteForm({ siteId, form }: QuoteFormProps) {
 
       setFields(emptyFields);
       resetTurnstile();
-      setSuccessMessage("Quote request received. We'll follow up soon.");
+      setSubmitted(true);
     } catch (error) {
       setErrorMessage(getSubmitErrorMessage(error));
       resetTurnstile();
@@ -151,6 +159,21 @@ export default function QuoteForm({ siteId, form }: QuoteFormProps) {
 
   const inputClassName =
     "mt-1 w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted/60 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:cursor-not-allowed disabled:opacity-60";
+
+  if (submitted) {
+    return (
+      <div className="mt-10">
+        <QuoteSuccessPanel
+          title="Quote request received"
+          message={QUOTE_SUCCESS_MESSAGE}
+          primaryAction={{
+            label: "Submit another quote",
+            onClick: handleSubmitAnother,
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <form className="mt-10 space-y-4 text-left" onSubmit={(event) => void handleSubmit(event)}>
@@ -170,12 +193,6 @@ export default function QuoteForm({ siteId, form }: QuoteFormProps) {
       {errorMessage && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {errorMessage}
-        </div>
-      )}
-
-      {successMessage && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {successMessage}
         </div>
       )}
 

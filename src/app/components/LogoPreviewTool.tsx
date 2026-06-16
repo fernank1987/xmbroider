@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import ProductMockup from "./ProductMockup";
+import QuoteSuccessPanel from "./QuoteSuccessPanel";
 import TurnstileWidget, { type TurnstileWidgetHandle } from "./TurnstileWidget";
 import { generateQuoteRequestId } from "@/lib/firebase/quoteRepository";
 import {
@@ -149,7 +150,7 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
   });
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [viewZoom, setViewZoom] = useState(1);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(
@@ -288,7 +289,6 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
   const updateQuoteField = (field: keyof QuoteFields, value: string) => {
     setQuoteFields((current) => ({ ...current, [field]: value }));
     setErrorMessage(null);
-    setSuccessMessage(null);
   };
 
   const handleProductChange = (nextProductId: string) => {
@@ -341,7 +341,6 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
     setArtworkFile(file);
     setArtworkAspectRatio(null);
     setErrorMessage(null);
-    setSuccessMessage(null);
 
     if (file) {
       const validationError = validateQuoteArtworkFile(file);
@@ -397,7 +396,6 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setErrorMessage(null);
-    setSuccessMessage(null);
 
     if (!isFirebaseConfigured) {
       setErrorMessage(
@@ -535,12 +533,10 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
         });
       }
 
-      setSuccessMessage(
-        "Your logo preview and quote request were submitted. We will follow up soon.",
-      );
       setArtworkFile(null);
       resetTurnstile();
       resetEditor();
+      setSubmitted(true);
     } catch (error) {
       setErrorMessage(getSubmitErrorMessage(error));
       resetTurnstile();
@@ -550,41 +546,30 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
   };
 
   const handleSubmitAnother = () => {
-    setSuccessMessage(null);
+    setSubmitted(false);
     setErrorMessage(null);
     setArtworkFile(null);
+    resetTurnstile();
     resetEditor();
   };
 
   const inputClassName =
     "mt-1 w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted/60 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:cursor-not-allowed disabled:opacity-60";
 
-  if (successMessage) {
+  if (submitted) {
     return (
-      <div className="mx-auto max-w-2xl rounded-2xl border border-border bg-surface p-8 text-center shadow-sm">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
-          <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-          </svg>
-        </div>
-        <h2 className="mt-5 text-2xl font-bold text-foreground">Preview submitted</h2>
-        <p className="mt-3 text-muted">{successMessage}</p>
-        <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-          <button
-            type="button"
-            onClick={handleSubmitAnother}
-            className="rounded-lg bg-accent px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-accent-hover"
-          >
-            Submit another preview
-          </button>
-          <Link
-            href="/"
-            className="inline-flex items-center justify-center rounded-lg border border-border px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-foreground/5"
-          >
-            Back to homepage
-          </Link>
-        </div>
-      </div>
+      <QuoteSuccessPanel
+        title="Preview submitted"
+        message="Quote request received. We'll follow up soon."
+        primaryAction={{
+          label: "Submit another preview",
+          onClick: handleSubmitAnother,
+        }}
+        secondaryAction={{
+          label: "Back to homepage",
+          href: "/",
+        }}
+      />
     );
   }
 
