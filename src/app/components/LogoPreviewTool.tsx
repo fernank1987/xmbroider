@@ -13,6 +13,7 @@ import {
 } from "@/lib/quoteNotificationClient";
 import {
   uploadQuoteArtwork,
+  uploadQuoteCompositePreview,
   uploadQuotePreviewImage,
   validateQuoteArtworkFile,
 } from "@/lib/firebase/storageRepository";
@@ -86,6 +87,9 @@ const DEFAULT_VARIANT = getDefaultVariant(DEFAULT_PRODUCT);
 const DEFAULT_PLACEMENT: Placement = "left_chest";
 const INITIAL_GARMENT_PLACEMENT = GARMENT_PLACEMENT_PRESETS[DEFAULT_PLACEMENT];
 const INITIAL_LOGO_SIZE = getDefaultLogoWidthForPlacement(DEFAULT_PLACEMENT);
+const MIN_VIEW_ZOOM = 0.75;
+const MAX_VIEW_ZOOM = 2.5;
+const VIEW_ZOOM_STEP = 0.15;
 
 function getSubmitErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {
@@ -141,6 +145,7 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [viewZoom, setViewZoom] = useState(1);
 
   const selectedProduct = useMemo(
     () => findPreviewProduct(catalog, productId) ?? catalog[0] ?? DEFAULT_PRODUCT,
@@ -289,6 +294,7 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
   const handleVariantChange = (nextVariantId: string) => {
     setVariantId(nextVariantId);
     setProductImageAspect(1);
+    setViewZoom(1);
   };
 
   const handleProductImageLoad = (aspectRatio: number) => {
@@ -341,8 +347,12 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
     }
 
     const rect = mockup.getBoundingClientRect();
-    const containerX = ((clientX - rect.left) / rect.width) * 100;
-    const containerY = ((clientY - rect.top) / rect.height) * 100;
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
+    const unscaledX = (localX - rect.width / 2) / viewZoom + rect.width / 2;
+    const unscaledY = (localY - rect.height / 2) / viewZoom + rect.height / 2;
+    const containerX = (unscaledX / rect.width) * 100;
+    const containerY = (unscaledY / rect.height) * 100;
     const local = containerPercentToGarmentLocal(
       containerX,
       containerY,
@@ -352,6 +362,18 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
     );
     setLogoPositionX(local.x);
     setLogoPositionY(local.y);
+  };
+
+  const handleZoomIn = () => {
+    setViewZoom((current) => clamp(current + VIEW_ZOOM_STEP, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM));
+  };
+
+  const handleZoomOut = () => {
+    setViewZoom((current) => clamp(current - VIEW_ZOOM_STEP, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM));
+  };
+
+  const handleZoomReset = () => {
+    setViewZoom(1);
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -392,30 +414,41 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
         selectedVariant.imageSrc ||
         getVariantImageFallbackSrc(selectedVariant.imageSrc);
 
-      const previewBlob = await generatePreviewImageBlob({
-        productImageSrc,
-        productImageFallbackSrc: selectedVariant.imageSrc
-          ? getVariantImageFallbackSrc(selectedVariant.imageSrc)
-          : undefined,
-        fallbackSwatchColor: selectedVariant.swatchColor,
-        artworkObjectUrl: artworkPreviewUrl,
-        logoGarmentPositionX: logoPositionX,
-        logoGarmentPositionY: logoPositionY,
-        logoWidthMm,
-        calibration: activeCalibration,
-      });
-
       let previewImageUrl: string | null = null;
       let previewImageStoragePath: string | null = null;
+      let previewCompositeUrl: string | null = null;
+      let previewCompositeStoragePath: string | null = null;
+      let previewCompositeExportError: string | null = null;
 
-      if (previewBlob) {
-        const previewUpload = await uploadQuotePreviewImage(
-          siteId,
-          quoteRequestId,
-          previewBlob,
-        );
-        previewImageUrl = previewUpload.url;
-        previewImageStoragePath = previewUpload.path;
+      try {
+        const previewBlob = await generatePreviewImageBlob({
+          productImageSrc,
+          productImageFallbackSrc: selectedVariant.imageSrc
+            ? getVariantImageFallbackSrc(selectedVariant.imageSrc)
+            : undefined,
+          fallbackSwatchColor: selectedVariant.swatchColor,
+          artworkObjectUrl: artworkPreviewUrl,
+          logoGarmentPositionX: logoPositionX,
+          logoGarmentPositionY: logoPositionY,
+          logoWidthMm,
+          calibration: activeCalibration,
+        });
+
+        if (previewBlob) {
+          const [previewUpload, compositeUpload] = await Promise.all([
+            uploadQuotePreviewImage(siteId, quoteRequestId, previewBlob),
+            uploadQuoteCompositePreview(siteId, quoteRequestId, previewBlob),
+          ]);
+          previewImageUrl = previewUpload.url;
+          previewImageStoragePath = previewUpload.path;
+          previewCompositeUrl = compositeUpload.url;
+          previewCompositeStoragePath = compositeUpload.path;
+        } else {
+          previewCompositeExportError =
+            "Composite preview image could not be generated.";
+        }
+      } catch (exportError) {
+        previewCompositeExportError = getSubmitErrorMessage(exportError);
       }
 
       const created = await createQuoteRequest(
@@ -456,6 +489,9 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
             artworkStoragePath: artworkUpload.path,
             previewImageUrl,
             previewImageStoragePath,
+            previewCompositeUrl,
+            previewCompositeStoragePath,
+            previewCompositeExportError,
           },
         },
         { quoteRequestId },
@@ -637,14 +673,53 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
         <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold text-foreground">3. Place your logo</h2>
-            <button
-              type="button"
-              onClick={resetPlacement}
-              disabled={submitting}
-              className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5"
-            >
-              Reset position
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleZoomOut}
+                disabled={submitting || viewZoom <= MIN_VIEW_ZOOM}
+                aria-label="Zoom out"
+                className="rounded-lg border border-border px-2.5 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                −
+              </button>
+              <input
+                type="range"
+                min={MIN_VIEW_ZOOM}
+                max={MAX_VIEW_ZOOM}
+                step={VIEW_ZOOM_STEP}
+                value={viewZoom}
+                disabled={submitting}
+                onChange={(event) => setViewZoom(Number(event.target.value))}
+                aria-label="View zoom"
+                className="w-20 accent-accent sm:w-28"
+              />
+              <button
+                type="button"
+                onClick={handleZoomIn}
+                disabled={submitting || viewZoom >= MAX_VIEW_ZOOM}
+                aria-label="Zoom in"
+                className="rounded-lg border border-border px-2.5 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                +
+              </button>
+              <button
+                type="button"
+                onClick={handleZoomReset}
+                disabled={submitting || viewZoom === 1}
+                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Reset zoom
+              </button>
+              <button
+                type="button"
+                onClick={resetPlacement}
+                disabled={submitting}
+                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5"
+              >
+                Reset position
+              </button>
+            </div>
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
@@ -676,37 +751,50 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
             onPointerUp={() => setDragging(false)}
             onPointerLeave={() => setDragging(false)}
           >
-            <ProductMockup
-              key={selectedVariant.id}
-              variant={selectedVariant}
-              onImageLoad={handleProductImageLoad}
-            />
-            {artworkPreviewUrl ? (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={artworkPreviewUrl}
-                alt="Uploaded logo preview"
-                draggable={false}
-                onLoad={handleArtworkPreviewLoad}
-                onPointerDown={(event) => {
-                  setDragging(true);
-                  event.currentTarget.setPointerCapture(event.pointerId);
-                  updatePositionFromPointer(event.clientX, event.clientY);
-                }}
-                style={{
-                  left: `${logoContainerPosition.x}%`,
-                  top: `${logoContainerPosition.y}%`,
-                  width: `${logoSizePercent}%`,
-                  height: "auto",
-                  transform: "translate(-50%, -50%)",
-                }}
-                className="absolute cursor-move touch-none select-none object-contain opacity-100 [mix-blend-mode:normal]"
+            <div
+              className="absolute inset-0"
+              style={{
+                transform: `scale(${viewZoom})`,
+                transformOrigin: "center center",
+              }}
+            >
+              <div className="relative h-full w-full">
+              <ProductMockup
+                key={selectedVariant.id}
+                variant={selectedVariant}
+                onImageLoad={handleProductImageLoad}
               />
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center bg-[#f8fafc] px-6 text-center text-sm text-slate-600">
-                Upload artwork to position it on the mockup.
+              {artworkPreviewUrl ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={artworkPreviewUrl}
+                  alt="Uploaded logo preview"
+                  draggable={false}
+                  onLoad={handleArtworkPreviewLoad}
+                  onPointerDown={(event) => {
+                    setDragging(true);
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                    updatePositionFromPointer(event.clientX, event.clientY);
+                  }}
+                  style={{
+                    left: `${logoContainerPosition.x}%`,
+                    top: `${logoContainerPosition.y}%`,
+                    width: `${logoSizePercent}%`,
+                    height: "auto",
+                    transform: "translate(-50%, -50%)",
+                  }}
+                  className="absolute cursor-move touch-none select-none object-contain opacity-100 [mix-blend-mode:normal]"
+                />
+              ) : null}
               </div>
-            )}
+            </div>
+            {!artworkPreviewUrl ? (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6">
+                <p className="rounded-lg border border-slate-200/80 bg-white/85 px-4 py-2.5 text-center text-sm text-slate-600 shadow-sm backdrop-blur-[1px]">
+                  Upload your logo to place it on this product.
+                </p>
+              </div>
+            ) : null}
           </div>
 
           <p className="mt-3 text-sm text-muted">

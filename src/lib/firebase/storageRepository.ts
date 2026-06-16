@@ -280,6 +280,26 @@ export async function uploadQuotePreviewImage(
   return { url, path, fileName };
 }
 
+/** Uploads the final customer composite mockup for a quote request. */
+export async function uploadQuoteCompositePreview(
+  siteId: string,
+  quoteId: string,
+  blob: Blob,
+): Promise<UploadQuoteFileResult> {
+  if (!isFirebaseConfigured || !storage) {
+    throw new Error(FIREBASE_DISABLED_MESSAGE);
+  }
+
+  const fileName = "preview-composite.png";
+  const path = getQuoteUploadStoragePath(siteId, quoteId, fileName);
+  const storageRef = ref(storage, path);
+
+  await uploadBytes(storageRef, blob, { contentType: "image/png" });
+  const url = await getDownloadURL(storageRef);
+
+  return { url, path, fileName };
+}
+
 export type ProductImageSide = "front" | "back";
 
 export type UploadProductImageResult = {

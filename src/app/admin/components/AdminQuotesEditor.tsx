@@ -266,6 +266,14 @@ function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
             <dd className={adminTableCellMuted}>{formatQuoteProductMeta(quote)}</dd>
           </div>
         )}
+        {quote.logoPositionX !== null && quote.logoPositionY !== null && (
+          <div>
+            <dt className={adminLabel}>Logo position</dt>
+            <dd className={adminTableCellMuted}>
+              {quote.logoPositionX.toFixed(1)}% · {quote.logoPositionY.toFixed(1)}%
+            </dd>
+          </div>
+        )}
         {formatCalibrationInfo(quote) && (
           <div>
             <dt className={adminLabel}>Preview calibration</dt>
@@ -273,25 +281,32 @@ function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
           </div>
         )}
       </dl>
-      <div className="flex flex-wrap gap-3">
-        {quote.productImageUrl && (
+      {(quote.previewCompositeUrl || quote.previewImageUrl) && (
+        <div>
+          <p className={adminLabel}>Customer preview mockup</p>
           <a
-            href={quote.productImageUrl}
+            href={quote.previewCompositeUrl ?? quote.previewImageUrl ?? "#"}
             target="_blank"
             rel="noreferrer"
-            className="block w-28"
+            className="mt-2 block max-w-md"
           >
-            <div className={adminGalleryThumb}>
+            <div className={`${adminGalleryThumb} !aspect-[4/3] !h-auto !w-full max-w-md`}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={quote.productImageUrl}
-                alt={`Product mockup for ${quote.name}`}
-                className="max-h-full max-w-full object-contain p-2"
+                src={quote.previewCompositeUrl ?? quote.previewImageUrl ?? ""}
+                alt={`Customer preview mockup for ${quote.name}`}
+                className="h-full w-full object-contain p-2"
               />
             </div>
-            <p className={`mt-1 text-xs ${adminTableCellSubtle}`}>Product</p>
           </a>
-        )}
+          {quote.previewCompositeExportError && (
+            <p className="mt-2 text-xs text-amber-700 admin-dark:text-amber-400">
+              Export note: {quote.previewCompositeExportError}
+            </p>
+          )}
+        </div>
+      )}
+      <div className="flex flex-wrap gap-3">
         {quote.artworkUrl && (
           <a
             href={quote.artworkUrl}
@@ -307,12 +322,12 @@ function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
                 className="max-h-full max-w-full object-contain p-2"
               />
             </div>
-            <p className={`mt-1 text-xs ${adminTableCellSubtle}`}>Artwork</p>
+            <p className={`mt-1 text-xs ${adminTableCellSubtle}`}>Original artwork</p>
           </a>
         )}
-        {quote.previewImageUrl && (
+        {quote.productImageUrl && (
           <a
-            href={quote.previewImageUrl}
+            href={quote.productImageUrl}
             target="_blank"
             rel="noreferrer"
             className="block w-28"
@@ -320,14 +335,33 @@ function QuotePreviewDetails({ quote }: { quote: QuoteRequest }) {
             <div className={adminGalleryThumb}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={quote.previewImageUrl}
-                alt={`Preview for ${quote.name}`}
+                src={quote.productImageUrl}
+                alt={`Product mockup for ${quote.name}`}
                 className="max-h-full max-w-full object-contain p-2"
               />
             </div>
-            <p className={`mt-1 text-xs ${adminTableCellSubtle}`}>Preview</p>
+            <p className={`mt-1 text-xs ${adminTableCellSubtle}`}>Product photo</p>
           </a>
         )}
+        {quote.previewImageUrl &&
+          quote.previewImageUrl !== quote.previewCompositeUrl && (
+            <a
+              href={quote.previewImageUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="block w-28"
+            >
+              <div className={adminGalleryThumb}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={quote.previewImageUrl}
+                  alt={`Preview for ${quote.name}`}
+                  className="max-h-full max-w-full object-contain p-2"
+                />
+              </div>
+              <p className={`mt-1 text-xs ${adminTableCellSubtle}`}>Legacy preview</p>
+            </a>
+          )}
       </div>
     </div>
   );

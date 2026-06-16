@@ -300,12 +300,12 @@ const xmbroiderContent: SiteContent = {
     badge: "Logo Preview",
     title: "Logo Preview Tool",
     description:
-      "Upload your PNG or JPG logo and place it on a shirt, hat, polo, or hoodie. Resize the placement, preview the look, and submit everything for a custom quote — all in one flow.",
+      "Preview your logo on polos, hats, hoodies, and more before requesting a quote.",
     features: [
-      "Upload PNG, JPG, or WebP logo files",
-      "Place on shirt, hat, polo, or hoodie",
-      "Drag, resize, and adjust placement",
-      "Submit for a custom quote",
+      "See your logo on real product photos",
+      "Drag, resize, and fine-tune placement in mm",
+      "Choose color, size, and decoration method",
+      "Submit everything for a custom quote — no checkout",
     ],
     cta: {
       label: "Open Logo Preview Tool",

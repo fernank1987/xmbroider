@@ -27,7 +27,7 @@ export function buildQuoteNotificationPayload(
     logoWidthInches: quote.logoWidthInches,
     sizePresetLabel: quote.sizePresetLabel,
     artworkUrl: quote.artworkUrl,
-    previewImageUrl: quote.previewImageUrl,
+    previewImageUrl: quote.previewCompositeUrl ?? quote.previewImageUrl,
     productImageUrl: quote.productImageUrl,
   };
 }

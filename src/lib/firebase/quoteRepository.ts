@@ -72,6 +72,9 @@ export type QuoteRequestPreviewData = {
   artworkStoragePath: string | null;
   previewImageUrl: string | null;
   previewImageStoragePath: string | null;
+  previewCompositeUrl: string | null;
+  previewCompositeStoragePath: string | null;
+  previewCompositeExportError: string | null;
 };
 
 export type QuoteRequest = {
@@ -129,6 +132,9 @@ export type CreateQuoteRequestInput = {
     artworkStoragePath: string;
     previewImageUrl?: string | null;
     previewImageStoragePath?: string | null;
+    previewCompositeUrl?: string | null;
+    previewCompositeStoragePath?: string | null;
+    previewCompositeExportError?: string | null;
   };
 };
 
@@ -230,6 +236,9 @@ function parseQuoteRequestPreviewData(data: DocumentData): QuoteRequestPreviewDa
     artworkStoragePath: readString(data.artworkStoragePath),
     previewImageUrl: readString(data.previewImageUrl),
     previewImageStoragePath: readString(data.previewImageStoragePath),
+    previewCompositeUrl: readString(data.previewCompositeUrl),
+    previewCompositeStoragePath: readString(data.previewCompositeStoragePath),
+    previewCompositeExportError: readString(data.previewCompositeExportError),
   };
 }
 
@@ -352,6 +361,9 @@ function buildQuoteRequestWritePayload(
     payload.artworkStoragePath = input.preview.artworkStoragePath;
     payload.previewImageUrl = input.preview.previewImageUrl ?? null;
     payload.previewImageStoragePath = input.preview.previewImageStoragePath ?? null;
+    payload.previewCompositeUrl = input.preview.previewCompositeUrl ?? null;
+    payload.previewCompositeStoragePath = input.preview.previewCompositeStoragePath ?? null;
+    payload.previewCompositeExportError = input.preview.previewCompositeExportError ?? null;
   }
 
   return payload;
