@@ -55,6 +55,6 @@ export async function DELETE(request: Request, context: RouteContext) {
         : "Unable to delete quote request.";
 
     console.error(`${LOG_PREFIX} caught error`, message);
-    return errorResponse(message, 503);
+    return errorResponse("Unable to delete quote request.", 500);
   }
 }

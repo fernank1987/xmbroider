@@ -1,5 +1,8 @@
-import { getAdminAuth } from "./firebase/admin";
 import { isAdminEmailAllowed } from "@/app/admin/lib/adminAllowlist";
+import {
+  FirebaseIdTokenVerificationError,
+  verifyFirebaseIdToken,
+} from "./firebaseIdTokenVerify";
 
 export type AdminAuthSuccess = {
   uid: string;
@@ -8,7 +11,7 @@ export type AdminAuthSuccess = {
 
 export type AdminAuthFailure = {
   error: string;
-  status: 401 | 403 | 503;
+  status: 401 | 403 | 500;
 };
 
 export type AdminAuthResult = AdminAuthSuccess | AdminAuthFailure;
@@ -36,34 +39,27 @@ export async function verifyAdminRequest(
     return { error: "Missing authorization token.", status: 401 };
   }
 
-  const auth = await getAdminAuth();
-  if (!auth) {
-    console.error(`${logPrefix} admin auth SDK unavailable`);
-    return { error: "Admin server is not configured.", status: 503 };
-  }
-
-  console.log(`${logPrefix} admin auth loaded`);
-
   try {
-    const decoded = await auth.verifyIdToken(idToken);
-    const email = decoded.email;
-    console.log(`${logPrefix} decoded email`, email ?? "(none)");
+    const decoded = await verifyFirebaseIdToken(idToken);
+    console.log(`${logPrefix} decoded email`, decoded.email);
 
-    if (!email || !isAdminEmailAllowed(email)) {
-      console.warn(`${logPrefix} allowlist denied`, email ?? "(none)");
+    if (!isAdminEmailAllowed(decoded.email)) {
+      console.warn(`${logPrefix} allowlist denied`, decoded.email);
       return { error: "You do not have admin access.", status: 403 };
     }
 
     console.log(`${logPrefix} allowlist passed`);
     return {
       uid: decoded.uid,
-      email,
+      email: decoded.email,
     };
   } catch (error) {
     const message =
-      error instanceof Error && error.message
+      error instanceof FirebaseIdTokenVerificationError
         ? error.message
-        : "Invalid or expired authorization token.";
+        : error instanceof Error && error.message
+          ? error.message
+          : "Invalid or expired authorization token.";
     console.warn(`${logPrefix} token verification failed`, message);
     return { error: "Invalid or expired authorization token.", status: 401 };
   }

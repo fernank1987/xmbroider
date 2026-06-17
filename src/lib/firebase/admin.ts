@@ -3,7 +3,6 @@ import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 
 type AdminStorageBucket = ReturnType<ReturnType<typeof getStorage>["bucket"]>;
-type AdminAuth = import("firebase-admin/auth").Auth;
 
 let adminApp: App | undefined;
 
@@ -55,17 +54,6 @@ export function getAdminFirestore(): Firestore | null {
     return null;
   }
   return getFirestore(app);
-}
-
-/** Loads Firebase Auth Admin SDK dynamically to avoid Turbopack ESM bundling issues. */
-export async function getAdminAuth(): Promise<AdminAuth | null> {
-  const app = initializeAdminApp();
-  if (!app) {
-    return null;
-  }
-
-  const { getAuth } = await import("firebase-admin/auth");
-  return getAuth(app);
 }
 
 /** Returns Firebase Storage bucket for server-side uploads. */
