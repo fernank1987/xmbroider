@@ -29,6 +29,7 @@ const wordpressRedirects = [
 ] as const;
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ["firebase-admin"],
   async redirects() {
     return wordpressRedirects.map(({ source, destination }) => ({
       source,
