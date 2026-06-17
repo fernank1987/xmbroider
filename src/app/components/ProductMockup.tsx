@@ -74,11 +74,15 @@ function ProductPhoto({
     }
   };
 
+  const needsCrossOrigin =
+    photoUrl.startsWith("http://") || photoUrl.startsWith("https://");
+
   return (
     /* eslint-disable-next-line @next/next/no-img-element */
     <img
       src={photoUrl}
       alt={`${colorName} product mockup`}
+      crossOrigin={needsCrossOrigin ? "anonymous" : undefined}
       onError={onLoadFailed}
       onLoad={handleImageLoad}
       className="h-full w-full object-contain opacity-100 [mix-blend-mode:normal]"

@@ -290,7 +290,7 @@ export async function uploadQuoteCompositePreview(
     throw new Error(FIREBASE_DISABLED_MESSAGE);
   }
 
-  const fileName = "preview-composite.png";
+  const fileName = "composite-preview.png";
   const path = getQuoteUploadStoragePath(siteId, quoteId, fileName);
   const storageRef = ref(storage, path);
 

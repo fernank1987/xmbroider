@@ -518,6 +518,7 @@ function QuotePreviewDetails({
           </div>
         )}
       </dl>
+      {!hasCompositePreview && (
       <div className="flex flex-wrap gap-3">
         {logoEntries.map((entry) => (
           <a
@@ -597,6 +598,7 @@ function QuotePreviewDetails({
             </a>
           )}
       </div>
+      )}
       </>
       )}
     </div>

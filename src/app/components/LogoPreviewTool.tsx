@@ -8,6 +8,7 @@ import TurnstileWidget, { type TurnstileWidgetHandle } from "./TurnstileWidget";
 import { generateQuoteRequestId } from "@/lib/firebase/quoteRepository";
 import {
   uploadQuoteArtwork,
+  uploadQuoteCompositePreview,
   validateQuoteArtworkFile,
 } from "@/lib/firebase/storageRepository";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
@@ -16,7 +17,10 @@ import {
   PLACEMENT_LABELS,
   type Placement,
 } from "@/lib/logoPreview";
-import { requestServerCompositePreview } from "@/lib/previewCompositeApi";
+import {
+  captureMockupStageAsPng,
+  COMPOSITE_PREVIEW_EXPORT_ERROR,
+} from "@/lib/mockupDomCapture";
 import {
   applyPlacementToSlot,
   createInitialLogoSlots,
@@ -46,7 +50,6 @@ import {
   APPROXIMATE_MOCKUP_WARNING,
   getMockupImageSideForPlacement,
   getVariantPhotoUrl,
-  resolveMockupImageSide,
   toAbsoluteAssetUrl,
   type MockupImageSide,
 } from "@/lib/productMockupImage";
@@ -199,6 +202,7 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
     serviceNeeded: DEFAULT_PRODUCT.defaultService,
   });
   const [submitting, setSubmitting] = useState(false);
+  const [isCapturingPreview, setIsCapturingPreview] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [viewZoom, setViewZoom] = useState(1);
@@ -649,16 +653,8 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
         MOCKUP_CONTAINER_ASPECT,
         productImageAspect,
       );
-      const exportMockupSide = resolveMockupImageSide(
-        enabledSlots.map((slot) => slot.placement),
-      );
       const productPhotoUrl = toAbsoluteAssetUrl(
-        getVariantPhotoUrl(selectedVariant, exportMockupSide),
-      );
-      const fallbackCalibration = resolvePreviewCalibration(
-        selectedVariant,
-        selectedProduct,
-        exportMockupSide === "back" ? "back" : "left_chest",
+        getVariantPhotoUrl(selectedVariant, mockupSide),
       );
 
       let previewImageUrl: string | null = null;
@@ -667,39 +663,33 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
       let previewCompositeStoragePath: string | null = null;
       let previewCompositeExportError: string | null = null;
 
+      setIsCapturingPreview(true);
       try {
-        const serverComposite = await requestServerCompositePreview({
-          siteId,
-          turnstileToken: turnstileToken!,
-          quoteRequestId,
-          productImageUrl: productPhotoUrl,
-          mockupSide: exportMockupSide,
-          fallbackSwatchColor: selectedVariant.swatchColor,
-          baseCalibration: fallbackCalibration,
-          logos: uploadResults.map(({ slot, upload }) => ({
-            label: slot.label,
-            artworkUrl: upload.url,
-            placement: slot.placement,
-            logoWidthMm: slot.widthMm,
-            logoGarmentPositionX: slot.positionX,
-            logoGarmentPositionY: slot.positionY,
-            calibration: resolvePreviewCalibration(
-              selectedVariant,
-              selectedProduct,
-              slot.placement,
-            ),
-          })),
-        });
-
-        previewImageUrl = serverComposite.previewImageUrl;
-        previewImageStoragePath = serverComposite.previewImageStoragePath;
-        previewCompositeUrl = serverComposite.previewCompositeUrl;
-        previewCompositeStoragePath = serverComposite.previewCompositeStoragePath;
-        if (serverComposite.exportNote) {
-          previewCompositeExportError = serverComposite.exportNote;
+        if (mockupRef.current) {
+          const capture = await captureMockupStageAsPng(mockupRef.current);
+          if (capture.blob) {
+            const compositeUpload = await uploadQuoteCompositePreview(
+              siteId,
+              quoteRequestId,
+              capture.blob,
+            );
+            previewCompositeUrl = compositeUpload.url;
+            previewCompositeStoragePath = compositeUpload.path;
+            previewImageUrl = compositeUpload.url;
+            previewImageStoragePath = compositeUpload.path;
+          } else {
+            previewCompositeExportError = capture.error;
+          }
+        } else {
+          previewCompositeExportError = COMPOSITE_PREVIEW_EXPORT_ERROR;
         }
       } catch (exportError) {
-        previewCompositeExportError = getSubmitErrorMessage(exportError);
+        previewCompositeExportError = COMPOSITE_PREVIEW_EXPORT_ERROR;
+        if (process.env.NODE_ENV === "development") {
+          console.error("[preview-export]", exportError);
+        }
+      } finally {
+        setIsCapturingPreview(false);
       }
 
       const placementSummary = enabledSlots
@@ -727,7 +717,7 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
             productVariantId: selectedVariant.id,
             colorName: selectedVariant.colorName,
             size: selectedSize || null,
-            productImageUrl: selectedVariant.imageSrc || null,
+            productImageUrl: productPhotoUrl ?? selectedVariant.imageSrc ?? null,
             placement: primarySlot.placement,
             logoSize: primaryLogoSizePercent,
             logoWidthMm: primarySlot.widthMm,
@@ -1080,7 +1070,10 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
                         width: `${overlay.sizePercent}%`,
                         height: "auto",
                         transform: "translate(-50%, -50%)",
-                        outline: isActive ? "2px solid rgba(59, 130, 246, 0.75)" : undefined,
+                        outline:
+                          isActive && !isCapturingPreview
+                            ? "2px solid rgba(59, 130, 246, 0.75)"
+                            : undefined,
                       }}
                       className={`absolute touch-none select-none object-contain opacity-100 [mix-blend-mode:normal] ${
                         isActive ? "cursor-move" : "cursor-pointer"
