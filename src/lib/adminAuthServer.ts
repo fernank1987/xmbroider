@@ -1,6 +1,11 @@
-import { isAdminEmailAllowed } from "@/app/admin/lib/adminAllowlist";
+import {
+  isAdminEmailAllowlistConfigured,
+  isAdminEmailAllowed,
+} from "@/app/admin/lib/adminAllowlist";
 import {
   FirebaseIdTokenVerificationError,
+  getFirebaseProjectId,
+  getFirebaseTokenIssuer,
   verifyFirebaseIdToken,
 } from "./firebaseIdTokenVerify";
 
@@ -18,13 +23,34 @@ export type AdminAuthResult = AdminAuthSuccess | AdminAuthFailure;
 
 const LOG_PREFIX = "[admin-auth]";
 
-function readBearerToken(request: Request): string | null {
+type BearerTokenResult =
+  | { token: string; error: null }
+  | { token: null; error: "missing_authorization_header" | "invalid_bearer_token" };
+
+function readBearerToken(request: Request): BearerTokenResult {
   const authHeader = request.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return null;
+  const hasAuthorizationHeader = Boolean(authHeader);
+  console.log(`${LOG_PREFIX} has Authorization header`, hasAuthorizationHeader);
+
+  if (!authHeader) {
+    console.warn(`${LOG_PREFIX} has bearer token`, false);
+    return { token: null, error: "missing_authorization_header" };
   }
+
+  if (!authHeader.startsWith("Bearer ")) {
+    console.warn(`${LOG_PREFIX} has bearer token`, false);
+    return { token: null, error: "invalid_bearer_token" };
+  }
+
   const token = authHeader.slice("Bearer ".length).trim();
-  return token || null;
+  const hasBearerToken = Boolean(token);
+  console.log(`${LOG_PREFIX} has bearer token`, hasBearerToken);
+
+  if (!hasBearerToken) {
+    return { token: null, error: "invalid_bearer_token" };
+  }
+
+  return { token, error: null };
 }
 
 /** Verifies Firebase ID token and admin email allowlist for server routes. */
@@ -33,19 +59,37 @@ export async function verifyAdminRequest(
   options?: { logPrefix?: string },
 ): Promise<AdminAuthResult> {
   const logPrefix = options?.logPrefix ?? LOG_PREFIX;
-  const idToken = readBearerToken(request);
-  if (!idToken) {
-    console.warn(`${logPrefix} missing authorization token`);
-    return { error: "Missing authorization token.", status: 401 };
+  const bearer = readBearerToken(request);
+
+  if (bearer.error !== null) {
+    if (bearer.error === "missing_authorization_header") {
+      return { error: "Missing Authorization header.", status: 401 };
+    }
+    return { error: "Invalid Bearer token.", status: 401 };
+  }
+
+  const idToken = bearer.token;
+
+  const projectId = getFirebaseProjectId();
+  console.log(`${logPrefix} allowlist configured`, isAdminEmailAllowlistConfigured());
+  if (projectId) {
+    console.log(`${logPrefix} expected issuer`, getFirebaseTokenIssuer(projectId));
+    console.log(`${logPrefix} expected audience`, projectId);
   }
 
   try {
-    const decoded = await verifyFirebaseIdToken(idToken);
-    console.log(`${logPrefix} decoded email`, decoded.email);
+    const decoded = await verifyFirebaseIdToken(idToken, { logPrefix });
 
-    if (!isAdminEmailAllowed(decoded.email)) {
+    if (!decoded.emailVerified) {
+      console.warn(`${logPrefix} email_verified is false`, decoded.email);
+    }
+
+    const emailAllowed = isAdminEmailAllowed(decoded.email);
+    console.log(`${logPrefix} email matched allowlist`, emailAllowed);
+
+    if (!emailAllowed) {
       console.warn(`${logPrefix} allowlist denied`, decoded.email);
-      return { error: "You do not have admin access.", status: 403 };
+      return { error: "Email not on admin allowlist.", status: 403 };
     }
 
     console.log(`${logPrefix} allowlist passed`);
@@ -59,9 +103,10 @@ export async function verifyAdminRequest(
         ? error.message
         : error instanceof Error && error.message
           ? error.message
-          : "Invalid or expired authorization token.";
+          : "Token verification failed.";
+
     console.warn(`${logPrefix} token verification failed`, message);
-    return { error: "Invalid or expired authorization token.", status: 401 };
+    return { error: message, status: 401 };
   }
 }
 

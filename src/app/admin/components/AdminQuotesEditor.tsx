@@ -347,7 +347,7 @@ function QuoteDeleteButton({
     void saveStatus.runAction(
       `quote:${quote.id}:delete`,
       async () => {
-        const idToken = await user.getIdToken();
+        const idToken = await user.getIdToken(true);
         const result = await deleteQuoteRequest({
           quoteRequestId: quote.id,
           idToken,

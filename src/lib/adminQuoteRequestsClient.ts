@@ -16,7 +16,7 @@ function sanitizeDeleteErrorDetail(detail: string): string {
     normalized.includes("firebase-admin/auth") ||
     normalized.includes("jose/dist/")
   ) {
-    return "admin token verification failed";
+    return "Token verification failed.";
   }
 
   return normalized;
@@ -32,13 +32,13 @@ function getDeleteQuoteRequestErrorMessage(body: unknown, status: number): strin
   }
 
   if (status === 401) {
-    if (detail.toLowerCase().includes("missing authorization")) {
-      return "Delete failed: missing admin authorization token.";
-    }
-    return "Delete failed: admin token verification failed.";
+    return `Delete failed: ${detail}`;
   }
 
   if (status === 403) {
+    if (detail.toLowerCase().includes("allowlist")) {
+      return `Delete failed: ${detail}`;
+    }
     return "Delete failed: you do not have admin access.";
   }
 

@@ -13,8 +13,12 @@ function getFirebaseJwks() {
   return firebaseJwks;
 }
 
-function getFirebaseProjectId(): string | null {
+export function getFirebaseProjectId(): string | null {
   return process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim() || null;
+}
+
+export function getFirebaseTokenIssuer(projectId: string): string {
+  return `https://securetoken.google.com/${projectId}`;
 }
 
 export type VerifiedFirebaseIdToken = {
@@ -30,31 +34,78 @@ export class FirebaseIdTokenVerificationError extends Error {
   }
 }
 
+function mapJwtVerifyError(error: unknown): FirebaseIdTokenVerificationError {
+  if (error instanceof Error) {
+    const code = "code" in error && typeof error.code === "string" ? error.code : null;
+
+    if (code === "ERR_JWT_EXPIRED") {
+      return new FirebaseIdTokenVerificationError("Token verification failed: token expired.");
+    }
+
+    if (code === "ERR_JWT_CLAIM_VALIDATION_FAILED") {
+      const claim =
+        "claim" in error && typeof error.claim === "string" ? error.claim : null;
+      if (claim === "iss" || claim === "issuer" || claim === "aud" || claim === "audience") {
+        return new FirebaseIdTokenVerificationError("Invalid issuer/audience.");
+      }
+      return new FirebaseIdTokenVerificationError("Invalid issuer/audience.");
+    }
+
+    if (
+      code === "ERR_JWS_SIGNATURE_VERIFICATION_FAILED" ||
+      code === "ERR_JWS_INVALID" ||
+      code === "ERR_JWT_INVALID"
+    ) {
+      return new FirebaseIdTokenVerificationError("Token verification failed.");
+    }
+
+    if (error.message) {
+      return new FirebaseIdTokenVerificationError(error.message);
+    }
+  }
+
+  return new FirebaseIdTokenVerificationError("Token verification failed.");
+}
+
 /** Verifies a Firebase client ID token using Google's public JWKS (no firebase-admin/auth). */
 export async function verifyFirebaseIdToken(
   idToken: string,
+  options?: { logPrefix?: string },
 ): Promise<VerifiedFirebaseIdToken> {
+  const logPrefix = options?.logPrefix ?? "[firebase-id-token]";
   const projectId = getFirebaseProjectId();
+
   if (!projectId) {
-    throw new FirebaseIdTokenVerificationError("Firebase project id is not configured.");
+    console.error(`${logPrefix} missing NEXT_PUBLIC_FIREBASE_PROJECT_ID`);
+    throw new FirebaseIdTokenVerificationError("Missing NEXT_PUBLIC_FIREBASE_PROJECT_ID.");
   }
+
+  const expectedIssuer = getFirebaseTokenIssuer(projectId);
+  const expectedAudience = projectId;
+  console.log(`${logPrefix} projectId used for audience/issuer`, projectId);
+  console.log(`${logPrefix} expected issuer`, expectedIssuer);
+  console.log(`${logPrefix} expected audience`, expectedAudience);
 
   try {
     const { payload } = await jwtVerify(idToken, getFirebaseJwks(), {
-      issuer: `https://securetoken.google.com/${projectId}`,
-      audience: projectId,
+      issuer: expectedIssuer,
+      audience: expectedAudience,
     });
 
     const uid = typeof payload.sub === "string" ? payload.sub : null;
     const email = typeof payload.email === "string" ? payload.email.trim() : null;
     const emailVerified = payload.email_verified === true;
 
-    if (!uid || !email) {
-      throw new FirebaseIdTokenVerificationError("Token is missing required user claims.");
+    console.log(`${logPrefix} decoded token uid`, uid ?? "(none)");
+    console.log(`${logPrefix} decoded token email`, email ?? "(none)");
+    console.log(`${logPrefix} decoded token email_verified`, payload.email_verified ?? "(none)");
+
+    if (!uid) {
+      throw new FirebaseIdTokenVerificationError("Token verification failed: missing uid.");
     }
 
-    if (payload.email_verified !== undefined && !emailVerified) {
-      throw new FirebaseIdTokenVerificationError("Email address is not verified.");
+    if (!email) {
+      throw new FirebaseIdTokenVerificationError("Missing email in token.");
     }
 
     return {
@@ -64,9 +115,12 @@ export async function verifyFirebaseIdToken(
     };
   } catch (error) {
     if (error instanceof FirebaseIdTokenVerificationError) {
+      console.warn(`${logPrefix} verification failed`, error.message);
       throw error;
     }
 
-    throw new FirebaseIdTokenVerificationError("Invalid or expired authorization token.");
+    const mapped = mapJwtVerifyError(error);
+    console.warn(`${logPrefix} verification failed`, mapped.message);
+    throw mapped;
   }
 }
