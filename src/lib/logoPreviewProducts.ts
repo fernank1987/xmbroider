@@ -59,7 +59,7 @@ const ST550_VARIANT_DEFS: Array<{
 ];
 
 function buildSt550ImageSrc(variantId: string): string {
-  return `/mockups/st550/${variantId}-front.jpg`;
+  return `/mockups/st550/${variantId}-front.svg`;
 }
 
 export const ST550_VARIANTS: ProductVariant[] = ST550_VARIANT_DEFS.map((variant) => ({

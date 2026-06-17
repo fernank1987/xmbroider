@@ -1,16 +1,24 @@
 "use client";
 
-import { useEffect, useState, type SyntheticEvent } from "react";
-import { APPROXIMATE_MOCKUP_WARNING } from "@/lib/productMockupImage";
-import type { MockupImageSide } from "@/lib/productMockupImage";
+import { useEffect, useMemo, useState, type SyntheticEvent } from "react";
+import {
+  APPROXIMATE_MOCKUP_WARNING,
+  BACK_IMAGE_FALLBACK_WARNING,
+  getLocalMockupSvgFallbackUrl,
+  logVariantPhotoResolution,
+  resolveVariantPhotoUrl,
+  type MockupImageSide,
+  type VariantPhotoResolution,
+} from "@/lib/productMockupImage";
 import type { ProductVariant } from "@/lib/logoPreviewProducts";
-import { getVariantPhotoUrl } from "@/lib/productMockupImage";
 
 type ProductMockupProps = {
   variant: ProductVariant;
   imageSide?: MockupImageSide;
+  productId?: string;
   onImageLoad?: (aspectRatio: number) => void;
   onApproximateFallback?: (approximate: boolean) => void;
+  onPhotoResolutionChange?: (resolution: VariantPhotoResolution) => void;
 };
 
 function PoloSvgFallback({
@@ -74,15 +82,11 @@ function ProductPhoto({
     }
   };
 
-  const needsCrossOrigin =
-    photoUrl.startsWith("http://") || photoUrl.startsWith("https://");
-
   return (
     /* eslint-disable-next-line @next/next/no-img-element */
     <img
       src={photoUrl}
       alt={`${colorName} product mockup`}
-      crossOrigin={needsCrossOrigin ? "anonymous" : undefined}
       onError={onLoadFailed}
       onLoad={handleImageLoad}
       className="h-full w-full object-contain opacity-100 [mix-blend-mode:normal]"
@@ -93,35 +97,103 @@ function ProductPhoto({
 export default function ProductMockup({
   variant,
   imageSide = "front",
+  productId,
   onImageLoad,
   onApproximateFallback,
+  onPhotoResolutionChange,
 }: ProductMockupProps) {
-  const photoUrl = getVariantPhotoUrl(variant, imageSide);
+  const resolution = useMemo(
+    () => resolveVariantPhotoUrl(variant, imageSide),
+    [variant, imageSide],
+  );
+  const svgFallbackUrl = useMemo(
+    () => (resolution.url ? getLocalMockupSvgFallbackUrl(resolution.url) : null),
+    [resolution.url],
+  );
+  const [useSvgFallback, setUseSvgFallback] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
-  const useFallbackArt = !photoUrl || loadFailed;
+
+  const displayUrl =
+    useSvgFallback && svgFallbackUrl ? svgFallbackUrl : resolution.url;
+  const useFallbackArt = !displayUrl || loadFailed;
+  const showBackFallbackWarning = !useFallbackArt && resolution.usedFrontFallbackForBack;
+  const showApproximateWarning =
+    useFallbackArt && resolution.fallbackReason === "missing_front_image";
+
+  useEffect(() => {
+    onPhotoResolutionChange?.(resolution);
+    logVariantPhotoResolution(
+      {
+        productId,
+        colorName: variant.colorName,
+        variantId: variant.id,
+        imageSide,
+      },
+      resolution,
+      { loadFailed },
+    );
+  }, [
+    resolution,
+    productId,
+    variant.colorName,
+    variant.id,
+    imageSide,
+    loadFailed,
+    onPhotoResolutionChange,
+  ]);
 
   useEffect(() => {
     onApproximateFallback?.(useFallbackArt);
   }, [useFallbackArt, onApproximateFallback]);
 
+  const handlePhotoLoadFailed = () => {
+    if (!useSvgFallback && svgFallbackUrl) {
+      setUseSvgFallback(true);
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[preview-mockup] local JPG missing, using SVG fallback", svgFallbackUrl);
+      }
+      return;
+    }
+
+    setLoadFailed(true);
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[preview-mockup] product photo failed to load", {
+        productId: productId ?? "(unknown)",
+        colorName: variant.colorName,
+        variantId: variant.id,
+        productImageUrl: displayUrl,
+        fallbackReason: "image_load_failed",
+      });
+    }
+  };
+
   if (useFallbackArt) {
     return (
       <div className="relative h-full w-full">
         <PoloSvgFallback swatchColor={variant.swatchColor} onImageLoad={onImageLoad} />
-        <p className="pointer-events-none absolute inset-x-0 bottom-2 px-3 text-center text-[11px] text-amber-800">
-          {APPROXIMATE_MOCKUP_WARNING}
-        </p>
+        {showApproximateWarning ? (
+          <p className="pointer-events-none absolute inset-x-0 bottom-2 px-3 text-center text-[11px] text-amber-800">
+            {APPROXIMATE_MOCKUP_WARNING}
+          </p>
+        ) : null}
       </div>
     );
   }
 
   return (
-    <ProductPhoto
-      key={photoUrl}
-      photoUrl={photoUrl}
-      colorName={variant.colorName}
-      onImageLoad={onImageLoad}
-      onLoadFailed={() => setLoadFailed(true)}
-    />
+    <div className="relative h-full w-full">
+      <ProductPhoto
+        key={displayUrl}
+        photoUrl={displayUrl}
+        colorName={variant.colorName}
+        onImageLoad={onImageLoad}
+        onLoadFailed={handlePhotoLoadFailed}
+      />
+      {showBackFallbackWarning ? (
+        <p className="pointer-events-none absolute inset-x-0 bottom-2 px-3 text-center text-[11px] text-amber-800">
+          {BACK_IMAGE_FALLBACK_WARNING}
+        </p>
+      ) : null}
+    </div>
   );
 }

@@ -24,6 +24,7 @@ import {
 const FIREBASE_DISABLED_MESSAGE =
   "Firebase is not configured. Add NEXT_PUBLIC_FIREBASE_* variables to .env.local.";
 
+import { normalizeProductColorImages } from "../productColorImages";
 import type { PreviewCalibration } from "../previewCalibration";
 
 export type ProductColor = {
@@ -216,16 +217,18 @@ function parseProductColor(value: unknown): ProductColor | null {
     return null;
   }
 
+  const images = normalizeProductColorImages(data);
+
   return {
     id,
     name,
     hex: readString(data.hex),
     sortOrder: readNumber(data.sortOrder) ?? 0,
     isVisible: readBoolean(data.isVisible, true),
-    frontImageUrl: readString(data.frontImageUrl),
-    frontImageStoragePath: readString(data.frontImageStoragePath),
-    backImageUrl: readString(data.backImageUrl),
-    backImageStoragePath: readString(data.backImageStoragePath),
+    frontImageUrl: images.frontImageUrl,
+    frontImageStoragePath: images.frontImageStoragePath,
+    backImageUrl: images.backImageUrl,
+    backImageStoragePath: images.backImageStoragePath,
     previewCalibration: parsePreviewCalibration(data.previewCalibration) ?? null,
   };
 }

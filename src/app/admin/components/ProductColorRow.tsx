@@ -108,6 +108,11 @@ export default function ProductColorRow({
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
             <ImageStatus label="Front" ready={Boolean(color.frontImageUrl)} />
             <ImageStatus label="Back" ready={Boolean(color.backImageUrl)} />
+            {!color.frontImageUrl ? (
+              <span className="text-xs text-amber-700 admin-dark:text-amber-400">
+                This color has no front image uploaded.
+              </span>
+            ) : null}
             <span className="text-xs text-slate-500 admin-dark:text-zinc-500">
               {calibrationStatus}
             </span>

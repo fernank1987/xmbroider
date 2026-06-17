@@ -1034,9 +1034,10 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
             >
               <div className="relative h-full w-full">
                 <ProductMockup
-                  key={`${selectedVariant.id}-${mockupSide}`}
+                  key={`${selectedProduct.id}-${selectedVariant.id}-${mockupSide}`}
                   variant={selectedVariant}
                   imageSide={mockupSide}
+                  productId={selectedProduct.id}
                   onImageLoad={handleProductImageLoad}
                   onApproximateFallback={handleApproximateFallback}
                 />

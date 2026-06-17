@@ -2,6 +2,7 @@ import type { Placement } from "./logoPreview";
 import type { Product } from "./firebase/productRepository";
 import { getVisibleProductColors } from "./firebase/productRepository";
 import { formatProductDisplayName } from "./productSlugs";
+import { toPreviewVariantImages } from "./productColorImages";
 import {
   LOGO_PREVIEW_PRODUCTS,
   type PreviewProduct,
@@ -31,17 +32,21 @@ function mapCategoryToService(category: string): string {
 }
 
 export function firestoreProductToPreviewProduct(product: Product): PreviewProduct {
-  const variants: ProductVariant[] = getVisibleProductColors(product).map((color) => ({
-    id: color.id,
-    label: color.name,
-    colorName: color.name,
-    imageSrc: color.frontImageUrl ?? "",
-    backImageSrc: color.backImageUrl ?? "",
-    swatchColor: color.hex ?? "#cbd5e1",
-    hasImage: Boolean(color.frontImageUrl),
-    hasBackImage: Boolean(color.backImageUrl),
-    previewCalibration: color.previewCalibration,
-  }));
+  const variants: ProductVariant[] = getVisibleProductColors(product).map((color) => {
+    const images = toPreviewVariantImages(color);
+
+    return {
+      id: color.id,
+      label: color.name,
+      colorName: color.name,
+      imageSrc: images.imageSrc,
+      backImageSrc: images.backImageSrc,
+      swatchColor: color.hex ?? "#cbd5e1",
+      hasImage: images.hasImage,
+      hasBackImage: images.hasBackImage,
+      previewCalibration: color.previewCalibration,
+    };
+  });
 
   return {
     id: product.id,
