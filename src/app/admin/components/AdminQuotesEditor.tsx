@@ -148,9 +148,17 @@ function getQuoteLogoEntries(quote: QuoteRequest): QuoteLogoPlacement[] {
     return quote.logoPlacements;
   }
 
+  const legacyArtworkUrl =
+    quote.artworkUrl ??
+    (quote as QuoteRequest & { logoUrl?: string | null }).logoUrl ??
+    null;
+  const legacyArtworkStoragePath =
+    quote.artworkStoragePath ??
+    (quote as QuoteRequest & { logoStoragePath?: string | null }).logoStoragePath ??
+    "";
+
   if (
-    quote.artworkUrl &&
-    quote.artworkStoragePath &&
+    legacyArtworkUrl &&
     quote.placement &&
     quote.logoWidthMm !== null &&
     quote.logoWidthInches !== null &&
@@ -160,8 +168,8 @@ function getQuoteLogoEntries(quote: QuoteRequest): QuoteLogoPlacement[] {
     return [
       {
         label: "Logo 1",
-        artworkUrl: quote.artworkUrl,
-        artworkStoragePath: quote.artworkStoragePath,
+        artworkUrl: legacyArtworkUrl,
+        artworkStoragePath: legacyArtworkStoragePath,
         placement: quote.placement,
         logoWidthMm: quote.logoWidthMm,
         logoWidthInches: quote.logoWidthInches,
@@ -173,7 +181,190 @@ function getQuoteLogoEntries(quote: QuoteRequest): QuoteLogoPlacement[] {
     ];
   }
 
+  if (legacyArtworkUrl) {
+    return [
+      {
+        label: "Logo 1",
+        artworkUrl: legacyArtworkUrl,
+        artworkStoragePath: legacyArtworkStoragePath,
+        placement: quote.placement ?? "left_chest",
+        logoWidthMm: quote.logoWidthMm ?? 0,
+        logoWidthInches:
+          quote.logoWidthInches ??
+          (quote.logoWidthMm !== null ? mmToInches(quote.logoWidthMm) : 0),
+        estimatedLogoHeightMm: quote.estimatedLogoHeightMm,
+        positionPercentX: quote.logoPositionX ?? 0,
+        positionPercentY: quote.logoPositionY ?? 0,
+        sizePresetLabel: quote.sizePresetLabel,
+      },
+    ];
+  }
+
   return [];
+}
+
+function getArtworkDownloadFilename(entry: QuoteLogoPlacement): string {
+  const fromPath = entry.artworkStoragePath?.split("/").pop()?.trim();
+  if (fromPath) {
+    return fromPath;
+  }
+  const labelSlug = entry.label.toLowerCase().replace(/\s+/g, "-");
+  return `${labelSlug}-artwork.png`;
+}
+
+function formatLogoPosition(entry: QuoteLogoPlacement): string | null {
+  if (entry.logoWidthMm <= 0) {
+    return null;
+  }
+  return `${entry.positionPercentX.toFixed(1)}% · ${entry.positionPercentY.toFixed(1)}%`;
+}
+
+function ArtworkActionLinks({
+  artworkUrl,
+  downloadFilename,
+  compact = false,
+}: {
+  artworkUrl: string;
+  downloadFilename: string;
+  compact?: boolean;
+}) {
+  const buttonClass = compact
+    ? "inline-flex items-center rounded border border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50 admin-dark:border-zinc-600 admin-dark:text-zinc-300 admin-dark:hover:bg-zinc-800"
+    : "inline-flex items-center rounded border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 admin-dark:border-zinc-600 admin-dark:text-zinc-300 admin-dark:hover:bg-zinc-800";
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      <a href={artworkUrl} target="_blank" rel="noreferrer" className={buttonClass}>
+        Open artwork
+      </a>
+      <a
+        href={artworkUrl}
+        download={downloadFilename}
+        target="_blank"
+        rel="noreferrer"
+        className={buttonClass}
+      >
+        Download artwork
+      </a>
+    </div>
+  );
+}
+
+function UploadedArtworkCard({
+  entry,
+  quoteName,
+  compact = false,
+}: {
+  entry: QuoteLogoPlacement;
+  quoteName: string;
+  compact?: boolean;
+}) {
+  const thumbSizeClass = compact ? "h-20 w-20" : "h-24 w-24";
+  const position = formatLogoPosition(entry);
+  const hasSize = entry.logoWidthMm > 0;
+
+  return (
+    <div className="flex gap-3 rounded-lg border border-slate-200 bg-white p-2.5 admin-dark:border-zinc-700 admin-dark:bg-zinc-900/40">
+      <a
+        href={entry.artworkUrl}
+        target="_blank"
+        rel="noreferrer"
+        className={`${thumbSizeClass} shrink-0`}
+      >
+        <div className={`${adminGalleryThumb} h-full w-full`}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={entry.artworkUrl}
+            alt={`${entry.label} artwork for ${quoteName}`}
+            className="max-h-full max-w-full object-contain p-1.5"
+          />
+        </div>
+      </a>
+      <div className="min-w-0 flex-1 space-y-1">
+        <p className={`text-sm font-medium ${adminTableCellTitle}`}>{entry.label}</p>
+        <p className={`text-xs ${adminTableCellMuted}`}>
+          Placement: {formatPlacement(entry.placement)}
+        </p>
+        {hasSize ? (
+          <p className={`text-xs ${adminTableCellMuted}`}>
+            Size: {formatLogoPlacementDimensions(entry)}
+          </p>
+        ) : null}
+        {position ? (
+          <p className={`text-xs ${adminTableCellSubtle}`}>Position: {position}</p>
+        ) : null}
+        <ArtworkActionLinks
+          artworkUrl={entry.artworkUrl}
+          downloadFilename={getArtworkDownloadFilename(entry)}
+          compact={compact}
+        />
+      </div>
+    </div>
+  );
+}
+
+function UploadedArtworkSection({
+  entries,
+  quoteName,
+  compact = false,
+}: {
+  entries: QuoteLogoPlacement[];
+  quoteName: string;
+  compact?: boolean;
+}) {
+  if (entries.length === 0) {
+    return null;
+  }
+
+  return (
+    <div>
+      <p className={adminLabel}>Uploaded artwork</p>
+      <div className={`mt-2 grid gap-2 ${compact ? "" : "sm:grid-cols-2"}`}>
+        {entries.map((entry) => (
+          <UploadedArtworkCard
+            key={`${entry.label}-${entry.artworkUrl}`}
+            entry={entry}
+            quoteName={quoteName}
+            compact={compact}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProductPhotoSection({
+  productImageUrl,
+  quoteName,
+  compact = false,
+}: {
+  productImageUrl: string;
+  quoteName: string;
+  compact?: boolean;
+}) {
+  const thumbSizeClass = compact ? "w-20" : "w-28";
+
+  return (
+    <div>
+      <p className={adminLabel}>Product photo</p>
+      <a
+        href={productImageUrl}
+        target="_blank"
+        rel="noreferrer"
+        className={`mt-2 block ${thumbSizeClass}`}
+      >
+        <div className={adminGalleryThumb}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={productImageUrl}
+            alt={`Product photo for ${quoteName}`}
+            className="max-h-full max-w-full object-contain p-2"
+          />
+        </div>
+      </a>
+      <p className={`mt-1 text-xs ${adminTableCellSubtle}`}>Catalog product image</p>
+    </div>
+  );
 }
 
 function formatCalibrationInfo(quote: QuoteRequest): string | null {
@@ -429,6 +620,13 @@ function QuotePreviewDetails({
           Export note: {quote.previewCompositeExportError}
         </p>
       )}
+
+      <UploadedArtworkSection
+        entries={logoEntries}
+        quoteName={quote.name}
+        compact={compact}
+      />
+
       {!compact && (
       <>
       <dl className="grid gap-2 text-sm sm:grid-cols-2">
@@ -518,87 +716,35 @@ function QuotePreviewDetails({
           </div>
         )}
       </dl>
-      {!hasCompositePreview && (
-      <div className="flex flex-wrap gap-3">
-        {logoEntries.map((entry) => (
-          <a
-            key={`${entry.label}-artwork`}
-            href={entry.artworkUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="block w-28"
-          >
-            <div className={adminGalleryThumb}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={entry.artworkUrl}
-                alt={`${entry.label} artwork for ${quote.name}`}
-                className="max-h-full max-w-full object-contain p-2"
-              />
-            </div>
-            <p className={`mt-1 text-xs ${adminTableCellSubtle}`}>
-              {entry.label} artwork
-            </p>
-          </a>
-        ))}
-        {!logoEntries.length && quote.artworkUrl && (
-          <a
-            href={quote.artworkUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="block w-28"
-          >
-            <div className={adminGalleryThumb}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={quote.artworkUrl}
-                alt={`Artwork for ${quote.name}`}
-                className="max-h-full max-w-full object-contain p-2"
-              />
-            </div>
-            <p className={`mt-1 text-xs ${adminTableCellSubtle}`}>Original artwork</p>
-          </a>
-        )}
-        {quote.productImageUrl && (
-          <a
-            href={quote.productImageUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="block w-28"
-          >
-            <div className={adminGalleryThumb}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={quote.productImageUrl}
-                alt={`Product mockup for ${quote.name}`}
-                className="max-h-full max-w-full object-contain p-2"
-              />
-            </div>
-            <p className={`mt-1 text-xs ${adminTableCellSubtle}`}>Product photo</p>
-          </a>
-        )}
-        {quote.previewImageUrl &&
-          !quote.previewCompositeUrl &&
-          quote.previewImageUrl !== quote.previewCompositeUrl && (
+      {quote.productImageUrl ? (
+        <ProductPhotoSection
+          productImageUrl={quote.productImageUrl}
+          quoteName={quote.name}
+          compact={false}
+        />
+      ) : null}
+      {quote.previewImageUrl &&
+        !quote.previewCompositeUrl &&
+        quote.previewImageUrl !== quote.previewCompositeUrl && (
+          <div>
+            <p className={adminLabel}>Legacy preview</p>
             <a
               href={quote.previewImageUrl}
               target="_blank"
               rel="noreferrer"
-              className="block w-28"
+              className="mt-2 block w-28"
             >
               <div className={adminGalleryThumb}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={quote.previewImageUrl}
-                  alt={`Preview for ${quote.name}`}
+                  alt={`Legacy preview for ${quote.name}`}
                   className="max-h-full max-w-full object-contain p-2"
                 />
               </div>
-              <p className={`mt-1 text-xs ${adminTableCellSubtle}`}>Legacy preview</p>
             </a>
-          )}
-      </div>
-      )}
+          </div>
+        )}
       </>
       )}
     </div>
