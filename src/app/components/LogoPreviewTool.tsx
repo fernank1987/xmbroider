@@ -18,9 +18,9 @@ import {
   type Placement,
 } from "@/lib/logoPreview";
 import {
-  captureMockupStageAsPng,
-  COMPOSITE_PREVIEW_EXPORT_ERROR,
+  captureAndUploadCompositePreview,
 } from "@/lib/mockupDomCapture";
+import { flushAnimationFrames } from "@/lib/mockupCaptureImages";
 import {
   applyPlacementToSlot,
   createInitialLogoSlots,
@@ -176,6 +176,7 @@ function getSlotContainerPosition(
 
 export default function LogoPreviewTool({ siteId, initialProductId }: LogoPreviewToolProps) {
   const mockupRef = useRef<HTMLDivElement>(null);
+  const previewCaptureStageRef = useRef<HTMLDivElement>(null);
   const dragStateRef = useRef<LogoDragState | null>(null);
   const dragContextRef = useRef<LogoDragContext>({
     variant: DEFAULT_VARIANT,
@@ -203,6 +204,9 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
   });
   const [submitting, setSubmitting] = useState(false);
   const [isCapturingPreview, setIsCapturingPreview] = useState(false);
+  const [previewCaptureDebugError, setPreviewCaptureDebugError] = useState<string | null>(
+    null,
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [viewZoom, setViewZoom] = useState(1);
@@ -622,6 +626,7 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
     }
 
     setSubmitting(true);
+    setPreviewCaptureDebugError(null);
 
     try {
       const quoteRequestId = generateQuoteRequestId(siteId);
@@ -664,33 +669,36 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
       let previewCompositeExportError: string | null = null;
 
       setIsCapturingPreview(true);
-      try {
-        if (mockupRef.current) {
-          const capture = await captureMockupStageAsPng(mockupRef.current);
-          if (capture.blob) {
-            const compositeUpload = await uploadQuoteCompositePreview(
-              siteId,
-              quoteRequestId,
-              capture.blob,
-            );
-            previewCompositeUrl = compositeUpload.url;
-            previewCompositeStoragePath = compositeUpload.path;
-            previewImageUrl = compositeUpload.url;
-            previewImageStoragePath = compositeUpload.path;
-          } else {
-            previewCompositeExportError = capture.error;
-          }
-        } else {
-          previewCompositeExportError = COMPOSITE_PREVIEW_EXPORT_ERROR;
-        }
-      } catch (exportError) {
-        previewCompositeExportError = COMPOSITE_PREVIEW_EXPORT_ERROR;
+      await flushAnimationFrames(2);
+
+      const captureStage = mockupRef.current ?? previewCaptureStageRef.current;
+      const captureUpload = await captureAndUploadCompositePreview({
+        siteId,
+        quoteRequestId,
+        stageElement: captureStage,
+        upload: uploadQuoteCompositePreview,
+      });
+
+      if (captureUpload.ok) {
+        previewCompositeUrl = captureUpload.result.previewCompositeUrl;
+        previewCompositeStoragePath = captureUpload.result.previewCompositeStoragePath;
+        previewImageUrl = captureUpload.result.previewImageUrl;
+        previewImageStoragePath = captureUpload.result.previewImageStoragePath;
         if (process.env.NODE_ENV === "development") {
-          console.error("[preview-export]", exportError);
+          console.log("[preview-export] composite uploaded", {
+            previewCompositeUrl,
+            previewCompositeStoragePath,
+          });
         }
-      } finally {
-        setIsCapturingPreview(false);
+      } else {
+        previewCompositeExportError = captureUpload.error;
+        if (process.env.NODE_ENV === "development") {
+          setPreviewCaptureDebugError(captureUpload.error);
+          console.error("[preview-export] capture/upload failed", captureUpload.error);
+        }
       }
+
+      setIsCapturingPreview(false);
 
       const placementSummary = enabledSlots
         .map((slot) => `${slot.label}: ${PLACEMENT_LABELS[slot.placement]}`)
@@ -753,6 +761,9 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
           source: "logo_preview_tool",
           logoCount: logoPlacements.length,
           placementSummary,
+          previewCompositeUrl,
+          previewImageUrl,
+          previewCompositeExportError,
         });
       }
 
@@ -768,6 +779,7 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
 
   const handleSubmitAnother = () => {
     setSubmitted(false);
+    setPreviewCaptureDebugError(null);
     setErrorMessage(null);
     setTurnstileToken(turnstileDevBypass ? getInitialTurnstileToken() : null);
     setTurnstileExpired(false);
@@ -780,18 +792,25 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
 
   if (submitted) {
     return (
-      <QuoteSuccessPanel
-        title="Preview submitted"
-        message="Quote request received. We'll follow up soon."
-        primaryAction={{
-          label: "Submit another preview",
-          onClick: handleSubmitAnother,
-        }}
-        secondaryAction={{
-          label: "Back to homepage",
-          href: "/",
-        }}
-      />
+      <>
+        <QuoteSuccessPanel
+          title="Preview submitted"
+          message="Quote request received. We'll follow up soon."
+          primaryAction={{
+            label: "Submit another preview",
+            onClick: handleSubmitAnother,
+          }}
+          secondaryAction={{
+            label: "Back to homepage",
+            href: "/",
+          }}
+        />
+        {process.env.NODE_ENV === "development" && previewCaptureDebugError ? (
+          <p className="mx-auto mt-4 max-w-6xl px-4 text-sm text-amber-800">
+            Preview capture failed: {previewCaptureDebugError}
+          </p>
+        ) : null}
+      </>
     );
   }
 
@@ -1032,7 +1051,7 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
                 transformOrigin: "center center",
               }}
             >
-              <div className="relative h-full w-full">
+              <div ref={previewCaptureStageRef} className="relative h-full w-full">
                 <ProductMockup
                   key={`${selectedProduct.id}-${selectedVariant.id}-${mockupSide}`}
                   variant={selectedVariant}
@@ -1059,6 +1078,8 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
                       key={slot.id}
                       src={artworkUrl}
                       alt={`${slot.label} preview`}
+                      data-mockup-logo-image="true"
+                      data-logo-label={slot.label}
                       draggable={false}
                       onLoad={(event) => handleArtworkPreviewLoad(index, event)}
                       onPointerDown={(event) => handleLogoPointerDown(index, event)}
@@ -1085,7 +1106,10 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
               </div>
             </div>
             {!hasAnyArtwork ? (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6">
+              <div
+                data-preview-placeholder="true"
+                className="pointer-events-none absolute inset-0 flex items-center justify-center px-6"
+              >
                 <p className="rounded-lg border border-slate-200/80 bg-white/85 px-4 py-2.5 text-center text-sm text-slate-600 shadow-sm backdrop-blur-[1px]">
                   Upload your logo to place it on this product.
                 </p>

@@ -392,7 +392,7 @@ function QuotePreviewDetails({
   }
 
   const logoEntries = getQuoteLogoEntries(quote);
-  const compositePreviewUrl = quote.previewCompositeUrl;
+  const compositePreviewUrl = quote.previewCompositeUrl ?? quote.previewImageUrl;
   const hasCompositePreview = Boolean(compositePreviewUrl);
   const previewSizeClass = compact ? "max-w-[140px]" : "max-w-2xl";
 
@@ -425,7 +425,7 @@ function QuotePreviewDetails({
         </p>
       )}
       {hasCompositePreview && quote.previewCompositeExportError && (
-        <p className="text-xs text-amber-700 admin-dark:text-amber-400">
+        <p className="text-xs text-slate-500 admin-dark:text-zinc-400">
           Export note: {quote.previewCompositeExportError}
         </p>
       )}

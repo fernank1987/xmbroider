@@ -87,6 +87,7 @@ function ProductPhoto({
     <img
       src={photoUrl}
       alt={`${colorName} product mockup`}
+      data-mockup-product-image="true"
       onError={onLoadFailed}
       onLoad={handleImageLoad}
       className="h-full w-full object-contain opacity-100 [mix-blend-mode:normal]"
