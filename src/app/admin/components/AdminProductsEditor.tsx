@@ -55,8 +55,15 @@ import { useSaveStatus } from "../lib/useSaveStatus";
 import AdminSaveButton from "./AdminSaveButton";
 import ProductCalibrationEditor from "./ProductCalibrationEditor";
 import ProductColorRow from "./ProductColorRow";
+import ProductPricingEditor from "./ProductPricingEditor";
 import SaveStatusMessage from "./SaveStatusMessage";
 import type { PreviewCalibration } from "@/lib/previewCalibration";
+import {
+  cloneProductPricing,
+  ST550_DEFAULT_PRICING,
+  validateProductPricing,
+  type ProductPricing,
+} from "@/lib/pricing/productPricing";
 
 const SITE_ID = siteContent.siteId;
 
@@ -97,6 +104,7 @@ function buildProductSaveUpdates(product: Product): UpdateProductInput {
     isVisible: product.isVisible,
     defaultPreviewCalibration: product.defaultPreviewCalibration,
     colors: product.colors,
+    pricing: product.pricing,
   };
 }
 
@@ -289,6 +297,10 @@ export default function AdminProductsEditor() {
         const product = getProductFromState(productId);
         if (!product) {
           throw new Error("Product not found. Refresh and try again.");
+        }
+        const pricingError = validateProductPricing(product.pricing);
+        if (pricingError) {
+          throw new Error(pricingError);
         }
         setErrorMessage(null);
         const updated = await updateProduct(SITE_ID, productId, buildProductSaveUpdates(product));
@@ -700,6 +712,31 @@ export default function AdminProductsEditor() {
     );
   };
 
+  const applySt550PricingDefaults = (productId: string) => {
+    setProducts((current) =>
+      current.map((product) =>
+        product.id === productId
+          ? { ...product, pricing: cloneProductPricing(ST550_DEFAULT_PRICING) }
+          : product,
+      ),
+    );
+    saveStatus.setLocalSuccess(
+      productActionKey(productId, "st550-pricing"),
+      "ST550 pricing applied — remember to save",
+    );
+  };
+
+  const updateProductPricing = (
+    productId: string,
+    pricing: ProductPricing | null,
+  ) => {
+    setProducts((current) =>
+      current.map((product) =>
+        product.id === productId ? { ...product, pricing } : product,
+      ),
+    );
+  };
+
   const updateColorDetails = (
     productId: string,
     colorId: string,
@@ -1024,6 +1061,31 @@ export default function AdminProductsEditor() {
               }
             />
           </div>
+        </div>
+      </div>
+
+      <div className="border-t border-slate-200 pt-4 admin-dark:border-zinc-700">
+        <h4 className="text-sm font-semibold text-slate-900 admin-dark:text-white">
+          Quote estimator pricing
+        </h4>
+        <p className={`mt-1 text-xs ${adminBodyText}`}>
+          Controls live price estimates on the preview page for this product.
+        </p>
+        <div className="mt-3">
+          <ProductPricingEditor
+            pricing={product.pricing}
+            onChange={(pricing) => updateProductPricing(product.id, pricing)}
+            onApplySt550Defaults={() => applySt550PricingDefaults(product.id)}
+          />
+          {saveStatus.getEntry(productActionKey(product.id, "st550-pricing")).status ===
+            "saved" && (
+            <SaveStatusMessage
+              status="saved"
+              message={
+                saveStatus.getEntry(productActionKey(product.id, "st550-pricing")).message
+              }
+            />
+          )}
         </div>
       </div>
 

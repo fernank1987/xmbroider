@@ -14,6 +14,8 @@ import {
 import { removeUndefinedDeep } from "./firestoreUtils";
 import { db, isFirebaseConfigured } from "./client";
 import type { PreviewCalibrationSource } from "../previewCalibration";
+import type { EmbroideryEstimateResult } from "../pricing/embroideryEstimator";
+import { parsePriceEstimate } from "../pricing/embroideryEstimator";
 
 const FIREBASE_DISABLED_MESSAGE =
   "Firebase is not configured. Add NEXT_PUBLIC_FIREBASE_* variables to .env.local.";
@@ -91,6 +93,14 @@ export type QuoteRequestPreviewData = {
   logoPlacements: QuoteLogoPlacement[] | null;
 };
 
+export type QuoteFinalPricing = {
+  finalStitchCount: number | null;
+  finalDecorationPrice: number | null;
+  finalSetupFee: number | null;
+  finalTotal: number | null;
+  finalPricingNotes: string | null;
+};
+
 export type QuoteRequest = {
   id: string;
   name: string;
@@ -106,6 +116,13 @@ export type QuoteRequest = {
   notificationStatus: QuoteNotificationStatus | null;
   notificationSentAt: string | null;
   notificationErrorSummary: string | null;
+  priceEstimate: EmbroideryEstimateResult | null;
+  pricingVersion: string | null;
+  finalStitchCount: number | null;
+  finalDecorationPrice: number | null;
+  finalSetupFee: number | null;
+  finalTotal: number | null;
+  finalPricingNotes: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 } & QuoteRequestPreviewData;
@@ -119,6 +136,7 @@ export type CreateQuoteRequestInput = {
   quantity?: string;
   deadline?: string;
   source?: QuoteRequestSource;
+  priceEstimate?: EmbroideryEstimateResult;
   preview?: {
     productId: string;
     productName: string;
@@ -276,6 +294,10 @@ function parseQuoteLogoPlacements(value: unknown): QuoteLogoPlacement[] | null {
   return placements.length > 0 ? placements : null;
 }
 
+function parsePriceEstimateFromFirestore(value: unknown): EmbroideryEstimateResult | null {
+  return parsePriceEstimate(value);
+}
+
 function parseQuoteRequestPreviewData(data: DocumentData): QuoteRequestPreviewData {
   return {
     productId: readString(data.productId),
@@ -352,6 +374,13 @@ function parseQuoteRequest(id: string, data: DocumentData): QuoteRequest | null 
     notificationStatus: readNotificationStatus(data.notificationStatus),
     notificationSentAt: parseTimestamp(data.notificationSentAt),
     notificationErrorSummary: readString(data.notificationErrorSummary),
+    priceEstimate: parsePriceEstimateFromFirestore(data.priceEstimate),
+    pricingVersion: readString(data.pricingVersion),
+    finalStitchCount: readNumber(data.finalStitchCount),
+    finalDecorationPrice: readNumber(data.finalDecorationPrice),
+    finalSetupFee: readNumber(data.finalSetupFee),
+    finalTotal: readNumber(data.finalTotal),
+    finalPricingNotes: readString(data.finalPricingNotes),
     createdAt: parseTimestamp(data.createdAt),
     updatedAt: parseTimestamp(data.updatedAt),
     ...parseQuoteRequestPreviewData(data),
@@ -403,6 +432,11 @@ function buildQuoteRequestWritePayload(
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
+
+  if (input.priceEstimate) {
+    payload.priceEstimate = input.priceEstimate;
+    payload.pricingVersion = input.priceEstimate.pricingVersion;
+  }
 
   if (input.preview) {
     payload.productId = input.preview.productId;
@@ -481,6 +515,7 @@ function emptyQuoteRequestPreviewData(): QuoteRequestPreviewData {
   };
 }
 
+
 /** Builds the in-memory quote returned to public clients (no Firestore read-back). */
 export function buildQuoteRequestFromInput(
   quoteRequestId: string,
@@ -540,6 +575,13 @@ export function buildQuoteRequestFromInput(
     notificationStatus: "pending",
     notificationSentAt: null,
     notificationErrorSummary: null,
+    priceEstimate: input.priceEstimate ?? null,
+    pricingVersion: input.priceEstimate?.pricingVersion ?? null,
+    finalStitchCount: null,
+    finalDecorationPrice: null,
+    finalSetupFee: null,
+    finalTotal: null,
+    finalPricingNotes: null,
     createdAt: now,
     updatedAt: now,
     ...previewData,

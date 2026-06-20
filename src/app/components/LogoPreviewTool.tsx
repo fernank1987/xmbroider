@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ProductMockup from "./ProductMockup";
 import QuoteSuccessPanel from "./QuoteSuccessPanel";
+import QuoteEstimatorCard, { buildLiveEstimate } from "./QuoteEstimatorCard";
 import TurnstileWidget, { type TurnstileWidgetHandle } from "./TurnstileWidget";
 import { generateQuoteRequestId } from "@/lib/firebase/quoteRepository";
 import {
@@ -73,6 +74,13 @@ import {
   TURNSTILE_EXPIRED_MESSAGE,
   TURNSTILE_MISSING_CHECK_MESSAGE,
 } from "@/lib/turnstileClient";
+import {
+  mapPreviewPlacementToEstimator,
+} from "@/lib/pricing/previewPricing";
+import type {
+  EstimatorComplexity,
+  EstimatorPlacement,
+} from "@/lib/pricing/embroideryEstimator";
 
 type LogoPreviewToolProps = {
   siteId: string;
@@ -94,10 +102,12 @@ const emptyQuoteFields: QuoteFields = {
   email: "",
   phone: "",
   serviceNeeded: "",
-  quantity: "",
+  quantity: "24",
   deadline: "",
   projectDetails: "",
 };
+
+const DEFAULT_ESTIMATE_QUANTITY = 24;
 
 const DEFAULT_PRODUCT = LOGO_PREVIEW_PRODUCTS[0];
 const DEFAULT_VARIANT = getDefaultVariant(DEFAULT_PRODUCT);
@@ -215,6 +225,10 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
   );
   const [turnstileExpired, setTurnstileExpired] = useState(false);
   const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0);
+  const [estimateQuantity, setEstimateQuantity] = useState(DEFAULT_ESTIMATE_QUANTITY);
+  const [estimatePlacement, setEstimatePlacement] = useState<EstimatorPlacement>("leftChest");
+  const [estimateComplexity, setEstimateComplexity] =
+    useState<EstimatorComplexity>("standard");
 
   const logo1File = logoSlots[0]?.artworkFile ?? null;
   const logo2File = logoSlots[1]?.artworkFile ?? null;
@@ -363,6 +377,11 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
     event.stopPropagation();
 
     setActiveSlotIndex(slotIndex);
+    setEstimatePlacement(
+      mapPreviewPlacementToEstimator(
+        dragContextRef.current.logoSlots[slotIndex]?.placement ?? "left_chest",
+      ),
+    );
 
     const local = pointerToGarmentLocal(event.clientX, event.clientY, slotIndex);
     if (!local) {
@@ -412,6 +431,12 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
 
   const applyPlacementPreset = (index: number, nextPlacement: Placement) => {
     updateSlot(index, (slot) => applyPlacementToSlot(slot, nextPlacement));
+    setEstimatePlacement(mapPreviewPlacementToEstimator(nextPlacement));
+  };
+
+  const selectActiveSlot = (index: number, placement: Placement) => {
+    setActiveSlotIndex(index);
+    setEstimatePlacement(mapPreviewPlacementToEstimator(placement));
   };
 
   const setLogoWidthFromMm = (index: number, nextWidthMm: number, presetLabel?: string) => {
@@ -431,6 +456,11 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
     applyPlacementPreset(activeSlotIndex, activeSlot.placement);
   };
 
+  const handleEstimateQuantityChange = (quantity: number) => {
+    setEstimateQuantity(quantity);
+    setQuoteFields((current) => ({ ...current, quantity: String(quantity) }));
+  };
+
   const resetEditor = () => {
     const product = findPreviewProduct(catalog, productId) ?? DEFAULT_PRODUCT;
     setProductId(product.id);
@@ -443,6 +473,9 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
       ...emptyQuoteFields,
       serviceNeeded: product.defaultService,
     });
+    setEstimateQuantity(DEFAULT_ESTIMATE_QUANTITY);
+    setEstimatePlacement("leftChest");
+    setEstimateComplexity("standard");
   };
 
   useEffect(() => {
@@ -704,6 +737,13 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
         .map((slot) => `${slot.label}: ${PLACEMENT_LABELS[slot.placement]}`)
         .join(" · ");
 
+      const priceEstimate = buildLiveEstimate(
+        selectedProduct,
+        estimateQuantity,
+        estimatePlacement,
+        estimateComplexity,
+      );
+
       const { quoteId } = await submitQuoteRequest({
         siteId,
         turnstileToken: turnstileToken!,
@@ -713,10 +753,11 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
           email: quoteFields.email,
           phone: quoteFields.phone || undefined,
           serviceNeeded: quoteFields.serviceNeeded,
-          quantity: quoteFields.quantity || undefined,
+          quantity: String(estimateQuantity),
           deadline: quoteFields.deadline || undefined,
           projectDetails: quoteFields.projectDetails,
           source: "logo_preview_tool",
+          priceEstimate,
           preview: {
             productId: selectedProduct.id,
             productName: selectedProduct.label,
@@ -939,7 +980,7 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
                 <button
                   key={slot.id}
                   type="button"
-                  onClick={() => setActiveSlotIndex(index)}
+                  onClick={() => selectActiveSlot(index, slot.placement)}
                   disabled={submitting}
                   className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
                     activeSlotIndex === index
@@ -1234,6 +1275,17 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
         </div>
       </section>
 
+      <QuoteEstimatorCard
+        product={selectedProduct}
+        quantity={estimateQuantity}
+        placement={estimatePlacement}
+        complexity={estimateComplexity}
+        disabled={submitting}
+        onQuantityChange={handleEstimateQuantityChange}
+        onPlacementChange={setEstimatePlacement}
+        onComplexityChange={setEstimateComplexity}
+      />
+
       <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm sm:p-6">
         <h2 className="text-lg font-semibold text-foreground">4. Request your quote</h2>
         <p className="mt-2 text-sm text-muted">
@@ -1332,33 +1384,18 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label htmlFor="preview-quantity" className="block text-sm font-medium text-foreground">
-                Quantity
-              </label>
-              <input
-                id="preview-quantity"
-                type="text"
-                value={quoteFields.quantity}
-                disabled={submitting}
-                onChange={(event) => updateQuoteField("quantity", event.target.value)}
-                className={inputClassName}
-              />
-            </div>
-            <div>
-              <label htmlFor="preview-deadline" className="block text-sm font-medium text-foreground">
-                Deadline
-              </label>
-              <input
-                id="preview-deadline"
-                type="text"
-                value={quoteFields.deadline}
-                disabled={submitting}
-                onChange={(event) => updateQuoteField("deadline", event.target.value)}
-                className={inputClassName}
-              />
-            </div>
+          <div>
+            <label htmlFor="preview-deadline" className="block text-sm font-medium text-foreground">
+              Deadline
+            </label>
+            <input
+              id="preview-deadline"
+              type="text"
+              value={quoteFields.deadline}
+              disabled={submitting}
+              onChange={(event) => updateQuoteField("deadline", event.target.value)}
+              className={inputClassName}
+            />
           </div>
 
           <div>

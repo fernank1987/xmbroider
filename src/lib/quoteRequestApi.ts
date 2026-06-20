@@ -5,6 +5,10 @@ import type {
   QuoteRequestSource,
 } from "@/lib/firebase/quoteRepository";
 import { QUOTE_REQUEST_SOURCES } from "@/lib/firebase/quoteRepository";
+import {
+  type EmbroideryEstimateResult,
+  parsePriceEstimate,
+} from "@/lib/pricing/embroideryEstimator";
 
 function readString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -85,6 +89,11 @@ function parseLogoPlacements(value: unknown): QuoteLogoPlacement[] | undefined {
     .filter((entry): entry is QuoteLogoPlacement => entry !== null);
 
   return placements.length > 0 ? placements : undefined;
+}
+
+function parsePriceEstimateFromRequest(value: unknown): EmbroideryEstimateResult | undefined {
+  const parsed = parsePriceEstimate(value);
+  return parsed ?? undefined;
 }
 
 function parsePreviewInput(
@@ -204,6 +213,11 @@ export function parseCreateQuoteRequestInput(
     }
     input.preview = previewResult;
     input.source = "logo_preview_tool";
+  }
+
+  const priceEstimate = parsePriceEstimateFromRequest(data.priceEstimate);
+  if (priceEstimate) {
+    input.priceEstimate = priceEstimate;
   }
 
   return { input };

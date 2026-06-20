@@ -68,6 +68,8 @@ export function firestoreProductToPreviewProduct(product: Product): PreviewProdu
     previewPhysicalWidthMm: product.previewPhysicalWidthMm,
     defaultPreviewCalibration: product.defaultPreviewCalibration,
     source: "firestore",
+    productSku: product.styleCode?.trim().toUpperCase() || null,
+    pricing: product.pricing,
   };
 }
 

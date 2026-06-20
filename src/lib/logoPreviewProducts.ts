@@ -1,5 +1,7 @@
 import type { Placement } from "./logoPreview";
 import type { PreviewCalibration } from "./previewCalibration";
+import type { ProductPricing } from "./pricing/productPricing";
+import { ST550_DEFAULT_PRICING } from "./pricing/productPricing";
 
 export type PreviewProduct = {
   id: string;
@@ -21,6 +23,8 @@ export type PreviewProduct = {
   previewPhysicalWidthMm?: number | null;
   defaultPreviewCalibration?: PreviewCalibration | null;
   source?: "firestore" | "fallback";
+  productSku?: string | null;
+  pricing?: ProductPricing | null;
 };
 
 export type ProductVariant = {
@@ -73,11 +77,13 @@ export const ST550_VARIANTS: ProductVariant[] = ST550_VARIANT_DEFS.map((variant)
 export const ST550_POLO: PreviewProduct = {
   id: "st550",
   label: "Sport-Tek ST550 Polo",
+  productSku: "ST550",
   defaultVariantId: "atomic-blue",
   defaultService: "embroidery",
   placements: ["left_chest", "right_chest", "center_chest", "sleeve", "back"],
   variants: ST550_VARIANTS,
   source: "fallback",
+  pricing: ST550_DEFAULT_PRICING,
 };
 
 export const LOGO_PREVIEW_PRODUCTS: PreviewProduct[] = [ST550_POLO];

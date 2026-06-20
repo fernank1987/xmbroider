@@ -26,6 +26,11 @@ const FIREBASE_DISABLED_MESSAGE =
 
 import { normalizeProductColorImages } from "../productColorImages";
 import type { PreviewCalibration } from "../previewCalibration";
+import {
+  parseProductPricing,
+  serializeProductPricingForWrite,
+  type ProductPricing,
+} from "../pricing/productPricing";
 
 export type ProductColor = {
   id: string;
@@ -64,6 +69,7 @@ export type Product = {
   colors: ProductColor[];
   isVisible: boolean;
   sortOrder: number;
+  pricing: ProductPricing | null;
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -113,6 +119,7 @@ export type UpdateProductInput = Partial<
     | "colors"
     | "isVisible"
     | "sortOrder"
+    | "pricing"
   >
 >;
 
@@ -279,6 +286,7 @@ function parseProduct(id: string, data: DocumentData): Product | null {
     colors,
     isVisible: readBoolean(data.isVisible, true),
     sortOrder: readNumber(data.sortOrder) ?? 0,
+    pricing: parseProductPricing(data.pricing),
     createdAt: parseTimestamp(data.createdAt),
     updatedAt: parseTimestamp(data.updatedAt),
   };
@@ -589,6 +597,11 @@ export async function updateProduct(
   }
   if (updates.sortOrder !== undefined) {
     payload.sortOrder = updates.sortOrder;
+  }
+  if (updates.pricing !== undefined) {
+    payload.pricing = updates.pricing
+      ? serializeProductPricingForWrite(updates.pricing)
+      : null;
   }
 
   if (

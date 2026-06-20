@@ -17,6 +17,12 @@ import { PLACEMENT_LABELS, type Placement } from "@/lib/logoPreview";
 import { mmToInches } from "@/lib/logoSize";
 import { PREVIEW_CALIBRATION_SOURCE_LABELS } from "@/lib/previewCalibration";
 import { isQuoteUnread, countUnreadQuotes } from "@/lib/quoteUnread";
+import {
+  ESTIMATOR_COMPLEXITY_LABELS,
+  ESTIMATOR_PLACEMENT_LABELS,
+  formatEstimateCurrency,
+  PRICE_ESTIMATE_DISCLAIMER,
+} from "@/lib/pricing/embroideryEstimator";
 import { siteContent } from "@/lib/siteContent";
 import {
   adminBadgeMuted,
@@ -564,6 +570,159 @@ function QuoteDeleteButton({
   );
 }
 
+function QuotePriceEstimateSection({
+  quote,
+  compact = false,
+}: {
+  quote: QuoteRequest;
+  compact?: boolean;
+}) {
+  const estimate = quote.priceEstimate;
+
+  if (compact) {
+    if (!estimate) {
+      return (
+        <p className={`text-xs ${adminTableCellSubtle}`}>No price estimate</p>
+      );
+    }
+
+    return (
+      <div className="mt-2 space-y-1 rounded border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs admin-dark:border-zinc-700 admin-dark:bg-zinc-900/50">
+        <p className="font-medium text-slate-800 admin-dark:text-zinc-200">
+          Est. {formatEstimateCurrency(estimate.estimatedTotal)}
+        </p>
+        <p className={adminTableCellSubtle}>
+          {estimate.quantity} ·{" "}
+          {ESTIMATOR_PLACEMENT_LABELS[estimate.placement] ?? estimate.placement}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/80 p-3 admin-dark:border-zinc-700 admin-dark:bg-zinc-900/50">
+      <p className={`text-xs font-semibold uppercase tracking-wide ${adminBodyText}`}>
+        Price estimate
+      </p>
+
+      {estimate ? (
+        <>
+          <dl className="grid gap-2 text-sm sm:grid-cols-2">
+            <div>
+              <dt className={adminLabel}>SKU</dt>
+              <dd className={adminTableCellMuted}>{estimate.productSku}</dd>
+            </div>
+            <div>
+              <dt className={adminLabel}>Quantity</dt>
+              <dd className={adminTableCellMuted}>{estimate.quantity}</dd>
+            </div>
+            <div>
+              <dt className={adminLabel}>Placement</dt>
+              <dd className={adminTableCellMuted}>
+                {ESTIMATOR_PLACEMENT_LABELS[estimate.placement] ?? estimate.placement}
+              </dd>
+            </div>
+            <div>
+              <dt className={adminLabel}>Complexity</dt>
+              <dd className={adminTableCellMuted}>
+                {ESTIMATOR_COMPLEXITY_LABELS[estimate.complexity] ?? estimate.complexity}
+              </dd>
+            </div>
+            <div>
+              <dt className={adminLabel}>Blank shirts</dt>
+              <dd className={adminTableCellMuted}>
+                {formatEstimateCurrency(estimate.blankSubtotal)}
+              </dd>
+            </div>
+            <div>
+              <dt className={adminLabel}>Embroidery</dt>
+              <dd className={adminTableCellMuted}>
+                {formatEstimateCurrency(estimate.decorationSubtotal)}
+              </dd>
+            </div>
+            <div>
+              <dt className={adminLabel}>Setup / digitizing</dt>
+              <dd className={adminTableCellMuted}>
+                {estimate.setupFeeWaived ? (
+                  <span className="space-y-1">
+                    <span className="block">Waived</span>
+                    <span className={`block text-xs ${adminTableCellSubtle}`}>
+                      Original setup fee:{" "}
+                      {formatEstimateCurrency(estimate.setupFeeOriginal)}
+                    </span>
+                    {estimate.setupFeeWaivedAtQty !== null && (
+                      <span className={`block text-xs ${adminTableCellSubtle}`}>
+                        Waived at quantity: {estimate.setupFeeWaivedAtQty}
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  formatEstimateCurrency(estimate.setupFeeApplied)
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt className={adminLabel}>Estimated total</dt>
+              <dd className="font-semibold text-slate-900 admin-dark:text-white">
+                {formatEstimateCurrency(estimate.estimatedTotal)}
+              </dd>
+            </div>
+          </dl>
+          <p className="text-xs text-slate-500 admin-dark:text-zinc-500">
+            {PRICE_ESTIMATE_DISCLAIMER} · {estimate.pricingVersion}
+          </p>
+        </>
+      ) : (
+        <p className={`text-sm ${adminTableCellMuted}`}>No estimate saved with this request.</p>
+      )}
+
+      <div className="border-t border-slate-200 pt-3 admin-dark:border-zinc-700">
+        <p className={`text-xs font-semibold uppercase tracking-wide ${adminBodyText}`}>
+          Final pricing (admin)
+        </p>
+        <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
+          <div>
+            <dt className={adminLabel}>Final stitch count</dt>
+            <dd className={adminTableCellMuted}>
+              {quote.finalStitchCount ?? "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className={adminLabel}>Final decoration price</dt>
+            <dd className={adminTableCellMuted}>
+              {quote.finalDecorationPrice !== null
+                ? formatEstimateCurrency(quote.finalDecorationPrice)
+                : "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className={adminLabel}>Final setup fee</dt>
+            <dd className={adminTableCellMuted}>
+              {quote.finalSetupFee !== null
+                ? formatEstimateCurrency(quote.finalSetupFee)
+                : "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className={adminLabel}>Final total</dt>
+            <dd className={adminTableCellMuted}>
+              {quote.finalTotal !== null ? formatEstimateCurrency(quote.finalTotal) : "—"}
+            </dd>
+          </div>
+          {quote.finalPricingNotes && (
+            <div className="sm:col-span-2">
+              <dt className={adminLabel}>Final pricing notes</dt>
+              <dd className={`whitespace-pre-wrap ${adminTableCellMuted}`}>
+                {quote.finalPricingNotes}
+              </dd>
+            </div>
+          )}
+        </dl>
+      </div>
+    </div>
+  );
+}
+
 function QuotePreviewDetails({
   quote,
   compact = false,
@@ -1007,6 +1166,7 @@ export default function AdminQuotesEditor() {
 
                 <QuoteNotificationDetails quote={quote} />
                 <QuotePreviewDetails quote={quote} />
+                <QuotePriceEstimateSection quote={quote} />
               </article>
             ))}
           </div>
@@ -1058,6 +1218,7 @@ export default function AdminQuotesEditor() {
                       </td>
                       <td className="min-w-[180px] max-w-xs px-4 py-4 align-top">
                         <QuotePreviewDetails quote={quote} compact />
+                        <QuotePriceEstimateSection quote={quote} compact />
                       </td>
                       <td className="min-w-[140px] px-4 py-4 align-top">
                         <QuoteNotificationDetails quote={quote} />

@@ -35,6 +35,11 @@ function buildQuoteRequestAdminPayload(
     updatedAt: FieldValue.serverTimestamp(),
   };
 
+  if (input.priceEstimate) {
+    payload.priceEstimate = input.priceEstimate;
+    payload.pricingVersion = input.priceEstimate.pricingVersion;
+  }
+
   if (input.preview) {
     payload.productId = input.preview.productId;
     payload.productName = input.preview.productName;
