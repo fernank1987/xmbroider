@@ -78,9 +78,11 @@ import {
   mapPreviewPlacementToEstimator,
 } from "@/lib/pricing/previewPricing";
 import type {
+  EstimateMode,
   EstimatorComplexity,
   EstimatorPlacement,
 } from "@/lib/pricing/embroideryEstimator";
+import { resolvePreviewProductPricing } from "@/lib/pricing/previewEstimate";
 
 type LogoPreviewToolProps = {
   siteId: string;
@@ -229,6 +231,8 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
   const [estimatePlacement, setEstimatePlacement] = useState<EstimatorPlacement>("leftChest");
   const [estimateComplexity, setEstimateComplexity] =
     useState<EstimatorComplexity>("standard");
+  const [estimateMode, setEstimateMode] = useState<EstimateMode>("basic");
+  const [estimatedStitches, setEstimatedStitches] = useState<number | null>(null);
 
   const logo1File = logoSlots[0]?.artworkFile ?? null;
   const logo2File = logoSlots[1]?.artworkFile ?? null;
@@ -277,6 +281,18 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
     () => findPreviewProduct(catalog, productId) ?? catalog[0] ?? DEFAULT_PRODUCT,
     [catalog, productId],
   );
+
+  const handleEstimateModeChange = (mode: EstimateMode) => {
+    setEstimateMode(mode);
+    if (mode === "stitchCount" && estimatedStitches === null) {
+      const pricing = resolvePreviewProductPricing(selectedProduct);
+      const defaultStitches = pricing.stitchPricing.defaultEstimatedStitches;
+      if (defaultStitches !== null && defaultStitches > 0) {
+        setEstimatedStitches(defaultStitches);
+      }
+    }
+  };
+
   const selectedVariant = useMemo(
     () => getProductVariant(selectedProduct, variantId) ?? getDefaultVariant(selectedProduct),
     [selectedProduct, variantId],
@@ -476,6 +492,8 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
     setEstimateQuantity(DEFAULT_ESTIMATE_QUANTITY);
     setEstimatePlacement("leftChest");
     setEstimateComplexity("standard");
+    setEstimateMode("basic");
+    setEstimatedStitches(null);
   };
 
   useEffect(() => {
@@ -737,12 +755,14 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
         .map((slot) => `${slot.label}: ${PLACEMENT_LABELS[slot.placement]}`)
         .join(" · ");
 
-      const priceEstimate = buildLiveEstimate(
-        selectedProduct,
-        estimateQuantity,
-        estimatePlacement,
-        estimateComplexity,
-      );
+      const priceEstimate = buildLiveEstimate({
+        product: selectedProduct,
+        quantity: estimateQuantity,
+        placement: estimatePlacement,
+        complexity: estimateComplexity,
+        estimateMode,
+        estimatedStitches,
+      });
 
       const { quoteId } = await submitQuoteRequest({
         siteId,
@@ -1280,10 +1300,14 @@ export default function LogoPreviewTool({ siteId, initialProductId }: LogoPrevie
         quantity={estimateQuantity}
         placement={estimatePlacement}
         complexity={estimateComplexity}
+        estimateMode={estimateMode}
+        estimatedStitches={estimatedStitches}
         disabled={submitting}
         onQuantityChange={handleEstimateQuantityChange}
         onPlacementChange={setEstimatePlacement}
         onComplexityChange={setEstimateComplexity}
+        onEstimateModeChange={handleEstimateModeChange}
+        onEstimatedStitchesChange={setEstimatedStitches}
       />
 
       <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm sm:p-6">

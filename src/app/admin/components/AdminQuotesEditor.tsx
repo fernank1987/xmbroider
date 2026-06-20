@@ -622,12 +622,59 @@ function QuotePriceEstimateSection({
                 {ESTIMATOR_PLACEMENT_LABELS[estimate.placement] ?? estimate.placement}
               </dd>
             </div>
-            <div>
-              <dt className={adminLabel}>Complexity</dt>
-              <dd className={adminTableCellMuted}>
-                {ESTIMATOR_COMPLEXITY_LABELS[estimate.complexity] ?? estimate.complexity}
-              </dd>
-            </div>
+            {estimate.estimateMode === "stitchCount" ? (
+              <>
+                <div>
+                  <dt className={adminLabel}>Pricing mode</dt>
+                  <dd className={adminTableCellMuted}>Stitch count</dd>
+                </div>
+                <div>
+                  <dt className={adminLabel}>Stitch count</dt>
+                  <dd className={adminTableCellMuted}>
+                    {estimate.estimatedStitches !== null
+                      ? estimate.estimatedStitches.toLocaleString("en-US")
+                      : "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className={adminLabel}>Rate / 1,000 stitches</dt>
+                  <dd className={adminTableCellMuted}>
+                    {estimate.ratePerThousand !== null
+                      ? formatEstimateCurrency(estimate.ratePerThousand)
+                      : "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className={adminLabel}>Min embroidery charge</dt>
+                  <dd className={adminTableCellMuted}>
+                    {estimate.minimumDecorationPrice !== null
+                      ? formatEstimateCurrency(estimate.minimumDecorationPrice)
+                      : "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className={adminLabel}>Stitch price (pre-placement)</dt>
+                  <dd className={adminTableCellMuted}>
+                    {estimate.stitchPriceBeforePlacement !== null
+                      ? formatEstimateCurrency(estimate.stitchPriceBeforePlacement)
+                      : "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className={adminLabel}>Decoration / item</dt>
+                  <dd className={adminTableCellMuted}>
+                    {formatEstimateCurrency(estimate.decorationUnitPrice)}
+                  </dd>
+                </div>
+              </>
+            ) : (
+              <div>
+                <dt className={adminLabel}>Complexity</dt>
+                <dd className={adminTableCellMuted}>
+                  {ESTIMATOR_COMPLEXITY_LABELS[estimate.complexity] ?? estimate.complexity}
+                </dd>
+              </div>
+            )}
             <div>
               <dt className={adminLabel}>Blank shirts</dt>
               <dd className={adminTableCellMuted}>

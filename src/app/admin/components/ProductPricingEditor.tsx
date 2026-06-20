@@ -8,10 +8,13 @@ import {
 } from "@/lib/pricing/estimatorConstants";
 import {
   cloneProductPricing,
+  computeQuantityBreakMarginPreview,
   ST550_DEFAULT_PRICING,
+  withComputedLandedCostBasis,
   type ProductPricing,
   type ProductQuantityBreak,
 } from "@/lib/pricing/productPricing";
+import { formatEstimateCurrency } from "@/lib/pricing/embroideryEstimator";
 import {
   adminBodyText,
   adminInput,
@@ -58,7 +61,7 @@ export default function ProductPricingEditor({
   const enabled = pricing?.enabled ?? false;
 
   const setPricing = (next: ProductPricing) => {
-    onChange(next);
+    onChange(withComputedLandedCostBasis(next));
   };
 
   const handleEnableChange = (checked: boolean) => {
@@ -144,52 +147,110 @@ export default function ProductPricingEditor({
         </p>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <div>
-          <label className={adminLabel}>Cost basis</label>
-          <input
-            className={adminInput}
-            type="number"
-            min={0}
-            step="0.01"
-            value={pricing.costBasis}
-            onChange={(event) =>
-              setPricing({ ...pricing, costBasis: parseRequiredNumber(event.target.value) })
-            }
-          />
-        </div>
-        <div>
-          <label className={adminLabel}>Deal cost</label>
-          <input
-            className={adminInput}
-            type="number"
-            min={0}
-            step="0.01"
-            value={pricing.dealCost ?? ""}
-            placeholder="Optional"
-            onChange={(event) =>
-              setPricing({
-                ...pricing,
-                dealCost: event.target.value.trim()
-                  ? parseRequiredNumber(event.target.value)
-                  : undefined,
-              })
-            }
-          />
-        </div>
-        <div className="flex items-end">
-          <label className="flex items-center gap-2 pb-2.5 text-sm text-slate-800 admin-dark:text-zinc-200">
+      <div className="rounded-lg border border-amber-200/80 bg-amber-50/50 p-4 admin-dark:border-amber-500/20 admin-dark:bg-amber-500/5">
+        <p className="text-sm font-medium text-slate-900 admin-dark:text-white">
+          Admin cost tracking
+        </p>
+        <p className={`mt-1 text-xs ${adminBodyText}`}>
+          Internal only — not shown on the public preview or customer quotes.
+        </p>
+        <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div>
+            <label className={adminLabel}>Supplier cost / replacement cost</label>
             <input
-              type="checkbox"
-              checked={pricing.useDealCostForMargin ?? false}
+              className={adminInput}
+              type="number"
+              min={0}
+              step="0.01"
+              value={pricing.costBasis}
               onChange={(event) =>
-                setPricing({ ...pricing, useDealCostForMargin: event.target.checked })
+                setPricing({ ...pricing, costBasis: parseRequiredNumber(event.target.value) })
               }
-              className="rounded border-slate-300"
             />
-            Use deal cost for margin
-          </label>
+          </div>
+          <div>
+            <label className={adminLabel}>Deal cost</label>
+            <input
+              className={adminInput}
+              type="number"
+              min={0}
+              step="0.01"
+              value={pricing.dealCost ?? ""}
+              placeholder="Optional"
+              onChange={(event) =>
+                setPricing({
+                  ...pricing,
+                  dealCost: event.target.value.trim()
+                    ? parseRequiredNumber(event.target.value)
+                    : undefined,
+                })
+              }
+            />
+          </div>
+          <div>
+            <label className={adminLabel}>Inbound shipping per item</label>
+            <input
+              className={adminInput}
+              type="number"
+              min={0}
+              step="0.01"
+              value={pricing.inboundShippingPerItem ?? ""}
+              placeholder="Optional"
+              onChange={(event) =>
+                setPricing({
+                  ...pricing,
+                  inboundShippingPerItem: event.target.value.trim()
+                    ? parseRequiredNumber(event.target.value)
+                    : undefined,
+                })
+              }
+            />
+          </div>
+          <div>
+            <label className={adminLabel}>Landed cost basis</label>
+            <input
+              className={`${adminInput} bg-slate-100 admin-dark:bg-zinc-800`}
+              type="text"
+              readOnly
+              value={formatEstimateCurrency(pricing.landedCostBasis ?? pricing.costBasis)}
+            />
+          </div>
+          <div>
+            <label className={adminLabel}>Target gross margin %</label>
+            <input
+              className={adminInput}
+              type="number"
+              min={0}
+              step="0.1"
+              value={pricing.targetGrossMarginPercent ?? ""}
+              placeholder="Optional"
+              onChange={(event) =>
+                setPricing({
+                  ...pricing,
+                  targetGrossMarginPercent: event.target.value.trim()
+                    ? parseRequiredNumber(event.target.value)
+                    : undefined,
+                })
+              }
+            />
+          </div>
+          <div className="flex items-end">
+            <label className="flex items-center gap-2 pb-2.5 text-sm text-slate-800 admin-dark:text-zinc-200">
+              <input
+                type="checkbox"
+                checked={pricing.useDealCostForMargin ?? false}
+                onChange={(event) =>
+                  setPricing({ ...pricing, useDealCostForMargin: event.target.checked })
+                }
+                className="rounded border-slate-300"
+              />
+              Use deal cost for margin
+            </label>
+          </div>
         </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div>
           <label className={adminLabel}>Setup fee</label>
           <input
@@ -258,11 +319,23 @@ export default function ProductPricingEditor({
                 <th className="px-2 py-1">Max qty</th>
                 <th className="px-2 py-1">Blank unit</th>
                 <th className="px-2 py-1">Embroidery base</th>
+                <th className="px-2 py-1">Landed cost</th>
+                <th className="px-2 py-1">Gross profit</th>
+                <th className="px-2 py-1">Margin %</th>
                 <th className="px-2 py-1" />
               </tr>
             </thead>
             <tbody>
-              {pricing.quantityBreaks.map((entry, index) => (
+              {pricing.quantityBreaks.map((entry, index) => {
+                const landedCostBasis =
+                  pricing.landedCostBasis ??
+                  pricing.costBasis + (pricing.inboundShippingPerItem ?? 0);
+                const margin = computeQuantityBreakMarginPreview(
+                  entry.blankUnitPrice,
+                  landedCostBasis,
+                );
+
+                return (
                 <tr key={`break-${index}`}>
                   <td className="px-2 py-1">
                     <input
@@ -309,6 +382,27 @@ export default function ProductPricingEditor({
                       }
                     />
                   </td>
+                  <td className={`px-2 py-1 text-slate-600 admin-dark:text-zinc-400`}>
+                    {formatEstimateCurrency(margin.landedCostBasis)}
+                  </td>
+                  <td
+                    className={`px-2 py-1 ${
+                      margin.grossProfitPerBlank >= 0
+                        ? "text-emerald-700 admin-dark:text-emerald-400"
+                        : "text-red-700 admin-dark:text-red-400"
+                    }`}
+                  >
+                    {formatEstimateCurrency(margin.grossProfitPerBlank)}
+                  </td>
+                  <td
+                    className={`px-2 py-1 ${
+                      margin.grossMarginPercent >= (pricing.targetGrossMarginPercent ?? 0)
+                        ? "text-emerald-700 admin-dark:text-emerald-400"
+                        : "text-amber-700 admin-dark:text-amber-400"
+                    }`}
+                  >
+                    {margin.grossMarginPercent.toFixed(1)}%
+                  </td>
                   <td className="px-2 py-1">
                     <button
                       type="button"
@@ -327,7 +421,8 @@ export default function ProductPricingEditor({
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -392,6 +487,94 @@ export default function ProductPricingEditor({
                 />
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-slate-200 pt-4 admin-dark:border-zinc-700">
+        <p className="text-sm font-medium text-slate-900 admin-dark:text-white">
+          Stitch-count pricing
+        </p>
+        <p className={`mt-1 text-xs ${adminBodyText}`}>
+          Optional stitch-based decoration pricing for the preview estimator.
+        </p>
+        <div className="mt-3 space-y-4">
+          <label className="flex items-center gap-2 text-sm text-slate-800 admin-dark:text-zinc-200">
+            <input
+              type="checkbox"
+              checked={pricing.stitchPricing.enabled}
+              onChange={(event) =>
+                setPricing({
+                  ...pricing,
+                  stitchPricing: {
+                    ...pricing.stitchPricing,
+                    enabled: event.target.checked,
+                  },
+                })
+              }
+              className="rounded border-slate-300"
+            />
+            Enable stitch pricing
+          </label>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <label className={adminLabel}>Rate per 1,000 stitches</label>
+              <input
+                className={adminInput}
+                type="number"
+                min={0}
+                step="0.01"
+                value={pricing.stitchPricing.ratePerThousand}
+                onChange={(event) =>
+                  setPricing({
+                    ...pricing,
+                    stitchPricing: {
+                      ...pricing.stitchPricing,
+                      ratePerThousand: parseRequiredNumber(event.target.value),
+                    },
+                  })
+                }
+              />
+            </div>
+            <div>
+              <label className={adminLabel}>Minimum embroidery charge</label>
+              <input
+                className={adminInput}
+                type="number"
+                min={0}
+                step="0.01"
+                value={pricing.stitchPricing.minimumDecorationPrice}
+                onChange={(event) =>
+                  setPricing({
+                    ...pricing,
+                    stitchPricing: {
+                      ...pricing.stitchPricing,
+                      minimumDecorationPrice: parseRequiredNumber(event.target.value),
+                    },
+                  })
+                }
+              />
+            </div>
+            <div>
+              <label className={adminLabel}>Default estimated stitches</label>
+              <input
+                className={adminInput}
+                type="number"
+                min={1}
+                step={1}
+                value={pricing.stitchPricing.defaultEstimatedStitches ?? ""}
+                placeholder="Optional"
+                onChange={(event) =>
+                  setPricing({
+                    ...pricing,
+                    stitchPricing: {
+                      ...pricing.stitchPricing,
+                      defaultEstimatedStitches: parseOptionalInt(event.target.value),
+                    },
+                  })
+                }
+              />
+            </div>
           </div>
         </div>
       </div>

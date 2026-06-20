@@ -18,18 +18,43 @@ export type ProductPlacementMultipliers = Record<EstimatorPlacement, number>;
 
 export type ProductComplexityMultipliers = Record<EstimatorComplexity, number>;
 
+export type ProductStitchPricing = {
+  enabled: boolean;
+  ratePerThousand: number;
+  minimumDecorationPrice: number;
+  defaultEstimatedStitches: number | null;
+};
+
+export type QuantityBreakMarginPreview = {
+  blankUnitPrice: number;
+  landedCostBasis: number;
+  grossProfitPerBlank: number;
+  grossMarginPercent: number;
+};
+
 export type ProductPricing = {
   enabled: boolean;
   costBasis: number;
   dealCost?: number;
   useDealCostForMargin?: boolean;
+  inboundShippingPerItem?: number;
+  landedCostBasis?: number;
+  targetGrossMarginPercent?: number;
   setupFee: number;
   setupFeeWaivedAtQty: number | null;
   setupFeeLabel: string;
   quantityBreaks: ProductQuantityBreak[];
   placementMultipliers: ProductPlacementMultipliers;
   complexityMultipliers: ProductComplexityMultipliers;
+  stitchPricing: ProductStitchPricing;
   pricingVersion: string;
+};
+
+export const ST550_DEFAULT_STITCH_PRICING: ProductStitchPricing = {
+  enabled: true,
+  ratePerThousand: 1.25,
+  minimumDecorationPrice: 10,
+  defaultEstimatedStitches: null,
 };
 
 export const ST550_DEFAULT_PRICING: ProductPricing = {
@@ -37,6 +62,9 @@ export const ST550_DEFAULT_PRICING: ProductPricing = {
   costBasis: 11.62,
   dealCost: 6,
   useDealCostForMargin: false,
+  inboundShippingPerItem: 1.5,
+  landedCostBasis: 13.12,
+  targetGrossMarginPercent: 35,
   setupFee: 45,
   setupFeeWaivedAtQty: 10,
   setupFeeLabel: "Setup/Digitizing",
@@ -60,8 +88,59 @@ export const ST550_DEFAULT_PRICING: ProductPricing = {
     detailed: 1.25,
     dense: 1.5,
   },
+  stitchPricing: ST550_DEFAULT_STITCH_PRICING,
   pricingVersion: PRODUCT_PRICING_VERSION,
 };
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function roundPercent(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+/** Admin-only: supplier cost plus inbound shipping per blank. */
+export function computeLandedCostBasis(
+  costBasis: number,
+  inboundShippingPerItem?: number,
+): number {
+  const shipping =
+    typeof inboundShippingPerItem === "number" && Number.isFinite(inboundShippingPerItem)
+      ? inboundShippingPerItem
+      : 0;
+  return roundMoney(costBasis + shipping);
+}
+
+/** Admin-only margin preview for a quantity break blank price. */
+export function computeQuantityBreakMarginPreview(
+  blankUnitPrice: number,
+  landedCostBasis: number,
+): QuantityBreakMarginPreview {
+  const grossProfitPerBlank = roundMoney(blankUnitPrice - landedCostBasis);
+  const grossMarginPercent =
+    blankUnitPrice > 0
+      ? roundPercent((grossProfitPerBlank / blankUnitPrice) * 100)
+      : 0;
+
+  return {
+    blankUnitPrice,
+    landedCostBasis,
+    grossProfitPerBlank,
+    grossMarginPercent,
+  };
+}
+
+/** Applies computed landed cost to pricing (admin-only field). */
+export function withComputedLandedCostBasis(pricing: ProductPricing): ProductPricing {
+  return {
+    ...pricing,
+    landedCostBasis: computeLandedCostBasis(
+      pricing.costBasis,
+      pricing.inboundShippingPerItem,
+    ),
+  };
+}
 
 function readNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -149,6 +228,32 @@ function parseComplexityMultipliers(
   return result;
 }
 
+function parseStitchPricing(value: unknown): ProductStitchPricing | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+
+  const data = value as Record<string, unknown>;
+  const ratePerThousand = readNumber(data.ratePerThousand);
+  const minimumDecorationPrice = readNumber(data.minimumDecorationPrice);
+  const defaultEstimatedStitchesRaw = data.defaultEstimatedStitches;
+  const defaultEstimatedStitches =
+    defaultEstimatedStitchesRaw === null || defaultEstimatedStitchesRaw === undefined
+      ? null
+      : readNumber(defaultEstimatedStitchesRaw);
+
+  if (ratePerThousand === null || minimumDecorationPrice === null) {
+    return null;
+  }
+
+  return {
+    enabled: readBoolean(data.enabled, false),
+    ratePerThousand,
+    minimumDecorationPrice,
+    defaultEstimatedStitches,
+  };
+}
+
 /** Parses Firestore pricing object; returns null when incomplete. */
 export function parseProductPricing(value: unknown): ProductPricing | null {
   if (typeof value !== "object" || value === null) {
@@ -188,52 +293,83 @@ export function parseProductPricing(value: unknown): ProductPricing | null {
   }
 
   const dealCost = readNumber(data.dealCost);
+  const inboundShippingPerItem = readNumber(data.inboundShippingPerItem);
+  const targetGrossMarginPercent = readNumber(data.targetGrossMarginPercent);
+  const stitchPricing =
+    parseStitchPricing(data.stitchPricing) ?? ST550_DEFAULT_STITCH_PRICING;
 
-  return {
+  const pricing: ProductPricing = {
     enabled: readBoolean(data.enabled, false),
     costBasis,
     dealCost: dealCost ?? undefined,
     useDealCostForMargin: readBoolean(data.useDealCostForMargin, false),
+    inboundShippingPerItem: inboundShippingPerItem ?? undefined,
+    targetGrossMarginPercent: targetGrossMarginPercent ?? undefined,
     setupFee,
     setupFeeWaivedAtQty,
     setupFeeLabel,
     quantityBreaks,
     placementMultipliers,
     complexityMultipliers,
+    stitchPricing,
     pricingVersion,
   };
+
+  return withComputedLandedCostBasis(pricing);
 }
 
 export function serializeProductPricingForWrite(
   pricing: ProductPricing,
 ): Record<string, unknown> {
+  const normalized = withComputedLandedCostBasis(pricing);
+
   return {
-    enabled: pricing.enabled,
-    costBasis: pricing.costBasis,
-    dealCost: pricing.dealCost ?? null,
-    useDealCostForMargin: pricing.useDealCostForMargin ?? false,
-    setupFee: pricing.setupFee,
-    setupFeeWaivedAtQty: pricing.setupFeeWaivedAtQty,
-    setupFeeLabel: pricing.setupFeeLabel.trim(),
-    quantityBreaks: pricing.quantityBreaks.map((entry) => ({
+    enabled: normalized.enabled,
+    costBasis: normalized.costBasis,
+    dealCost: normalized.dealCost ?? null,
+    useDealCostForMargin: normalized.useDealCostForMargin ?? false,
+    inboundShippingPerItem: normalized.inboundShippingPerItem ?? null,
+    landedCostBasis: normalized.landedCostBasis ?? null,
+    targetGrossMarginPercent: normalized.targetGrossMarginPercent ?? null,
+    setupFee: normalized.setupFee,
+    setupFeeWaivedAtQty: normalized.setupFeeWaivedAtQty,
+    setupFeeLabel: normalized.setupFeeLabel.trim(),
+    quantityBreaks: normalized.quantityBreaks.map((entry) => ({
       minQty: entry.minQty,
       maxQty: entry.maxQty,
       blankUnitPrice: entry.blankUnitPrice,
       decorationBasePrice: entry.decorationBasePrice,
     })),
-    placementMultipliers: { ...pricing.placementMultipliers },
-    complexityMultipliers: { ...pricing.complexityMultipliers },
-    pricingVersion: pricing.pricingVersion,
+    placementMultipliers: { ...normalized.placementMultipliers },
+    complexityMultipliers: { ...normalized.complexityMultipliers },
+    stitchPricing: {
+      enabled: normalized.stitchPricing.enabled,
+      ratePerThousand: normalized.stitchPricing.ratePerThousand,
+      minimumDecorationPrice: normalized.stitchPricing.minimumDecorationPrice,
+      defaultEstimatedStitches: normalized.stitchPricing.defaultEstimatedStitches,
+    },
+    pricingVersion: normalized.pricingVersion,
   };
 }
 
 export function cloneProductPricing(pricing: ProductPricing): ProductPricing {
-  return {
+  return withComputedLandedCostBasis({
     ...pricing,
     quantityBreaks: pricing.quantityBreaks.map((entry) => ({ ...entry })),
     placementMultipliers: { ...pricing.placementMultipliers },
     complexityMultipliers: { ...pricing.complexityMultipliers },
-  };
+    stitchPricing: { ...pricing.stitchPricing },
+  });
+}
+
+/** Returns stitch pricing config for estimates (product config or ST550 fallback). */
+export function resolveEffectiveStitchPricing(
+  stitchPricing: ProductStitchPricing | null | undefined,
+): ProductStitchPricing {
+  if (stitchPricing?.enabled) {
+    return stitchPricing;
+  }
+  return { ...ST550_DEFAULT_STITCH_PRICING };
 }
 
 /** Returns enabled product pricing or ST550 fallback defaults. */
@@ -311,6 +447,18 @@ export function validateProductPricing(
   if (pricing.dealCost !== undefined && pricing.dealCost < 0) {
     return "Deal cost cannot be negative.";
   }
+  if (
+    pricing.inboundShippingPerItem !== undefined &&
+    pricing.inboundShippingPerItem < 0
+  ) {
+    return "Inbound shipping per item cannot be negative.";
+  }
+  if (
+    pricing.targetGrossMarginPercent !== undefined &&
+    pricing.targetGrossMarginPercent < 0
+  ) {
+    return "Target gross margin cannot be negative.";
+  }
   if (pricing.setupFee < 0) {
     return "Setup fee cannot be negative.";
   }
@@ -355,6 +503,21 @@ export function validateProductPricing(
     if (value < 0) {
       return `${key} complexity multiplier cannot be negative.`;
     }
+  }
+
+  const stitch = pricing.stitchPricing;
+  if (stitch.ratePerThousand < 0) {
+    return "Rate per thousand stitches cannot be negative.";
+  }
+  if (stitch.minimumDecorationPrice < 0) {
+    return "Minimum embroidery charge cannot be negative.";
+  }
+  if (
+    stitch.defaultEstimatedStitches !== null &&
+    (stitch.defaultEstimatedStitches < 1 ||
+      !Number.isInteger(stitch.defaultEstimatedStitches))
+  ) {
+    return "Default estimated stitches must be empty or a positive whole number.";
   }
 
   return null;

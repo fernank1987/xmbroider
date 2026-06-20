@@ -1,5 +1,6 @@
 import {
   PRODUCT_PRICING_VERSION,
+  resolveEffectiveStitchPricing,
   resolveQuantityBreak,
   resolveSetupFee,
   ST550_DEFAULT_PRICING,
@@ -24,6 +25,9 @@ export {
 
 export const PRICING_VERSION = PRODUCT_PRICING_VERSION;
 
+export const ESTIMATE_MODES = ["basic", "stitchCount"] as const;
+export type EstimateMode = (typeof ESTIMATE_MODES)[number];
+
 export type EmbroideryEstimateInput = {
   productId: string;
   productSku: string;
@@ -31,6 +35,8 @@ export type EmbroideryEstimateInput = {
   placement: EstimatorPlacement;
   complexity: EstimatorComplexity;
   pricing: ProductPricing;
+  estimateMode?: EstimateMode;
+  estimatedStitches?: number | null;
 };
 
 export type EmbroideryEstimateResult = {
@@ -39,6 +45,11 @@ export type EmbroideryEstimateResult = {
   quantity: number;
   placement: EstimatorPlacement;
   complexity: EstimatorComplexity;
+  estimateMode: EstimateMode;
+  estimatedStitches: number | null;
+  ratePerThousand: number | null;
+  minimumDecorationPrice: number | null;
+  stitchPriceBeforePlacement: number | null;
   blankUnitPrice: number;
   decorationUnitPrice: number;
   setupFeeOriginal: number;
@@ -74,6 +85,64 @@ function readBoolean(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
 
+function readEstimateMode(value: unknown): EstimateMode | null {
+  return value === "basic" || value === "stitchCount" ? value : null;
+}
+
+function resolveDecorationPricing(
+  input: EmbroideryEstimateInput,
+  quantityBreak: ReturnType<typeof resolveQuantityBreak>,
+): {
+  decorationUnitPrice: number;
+  estimateMode: EstimateMode;
+  estimatedStitches: number | null;
+  ratePerThousand: number | null;
+  minimumDecorationPrice: number | null;
+  stitchPriceBeforePlacement: number | null;
+} {
+  const estimateMode = input.estimateMode ?? "basic";
+  const stitchCount =
+    typeof input.estimatedStitches === "number" && input.estimatedStitches > 0
+      ? Math.floor(input.estimatedStitches)
+      : null;
+
+  if (estimateMode === "stitchCount" && stitchCount !== null) {
+    const stitchPricing = resolveEffectiveStitchPricing(input.pricing.stitchPricing);
+    const rawStitchPrice = Math.max(
+      stitchPricing.minimumDecorationPrice,
+      (stitchCount / 1000) * stitchPricing.ratePerThousand,
+    );
+    const stitchPriceBeforePlacement = roundMoney(rawStitchPrice);
+    const decorationUnitPrice = roundMoney(
+      stitchPriceBeforePlacement * input.pricing.placementMultipliers[input.placement],
+    );
+
+    return {
+      decorationUnitPrice,
+      estimateMode: "stitchCount",
+      estimatedStitches: stitchCount,
+      ratePerThousand: stitchPricing.ratePerThousand,
+      minimumDecorationPrice: stitchPricing.minimumDecorationPrice,
+      stitchPriceBeforePlacement,
+    };
+  }
+
+  const decorationUnitPrice = roundMoney(
+    quantityBreak.decorationBasePrice *
+      input.pricing.placementMultipliers[input.placement] *
+      input.pricing.complexityMultipliers[input.complexity],
+  );
+
+  return {
+    decorationUnitPrice,
+    estimateMode: "basic",
+    estimatedStitches: null,
+    ratePerThousand: null,
+    minimumDecorationPrice: null,
+    stitchPriceBeforePlacement: null,
+  };
+}
+
 /** Customer-facing embroidery estimate from product pricing config. */
 export function calculateEmbroideryEstimate(
   input: EmbroideryEstimateInput,
@@ -84,15 +153,11 @@ export function calculateEmbroideryEstimate(
 
   const quantityBreak = resolveQuantityBreak(quantity, pricing.quantityBreaks);
   const blankUnitPrice = quantityBreak.blankUnitPrice;
-  const decorationUnitPrice = roundMoney(
-    quantityBreak.decorationBasePrice *
-      pricing.placementMultipliers[input.placement] *
-      pricing.complexityMultipliers[input.complexity],
-  );
+  const decoration = resolveDecorationPricing(input, quantityBreak);
 
   const setup = resolveSetupFee(pricing, quantity);
   const blankSubtotal = roundMoney(blankUnitPrice * quantity);
-  const decorationSubtotal = roundMoney(decorationUnitPrice * quantity);
+  const decorationSubtotal = roundMoney(decoration.decorationUnitPrice * quantity);
   const estimatedTotal = roundMoney(
     blankSubtotal + decorationSubtotal + setup.setupFeeApplied,
   );
@@ -104,8 +169,13 @@ export function calculateEmbroideryEstimate(
     quantity,
     placement: input.placement,
     complexity: input.complexity,
+    estimateMode: decoration.estimateMode,
+    estimatedStitches: decoration.estimatedStitches,
+    ratePerThousand: decoration.ratePerThousand,
+    minimumDecorationPrice: decoration.minimumDecorationPrice,
+    stitchPriceBeforePlacement: decoration.stitchPriceBeforePlacement,
     blankUnitPrice: roundMoney(blankUnitPrice),
-    decorationUnitPrice,
+    decorationUnitPrice: decoration.decorationUnitPrice,
     setupFeeOriginal: roundMoney(setup.setupFeeOriginal),
     setupFeeApplied: roundMoney(setup.setupFeeApplied),
     setupFeeWaived: setup.setupFeeWaived,
@@ -149,6 +219,25 @@ export function parsePriceEstimate(value: unknown): EmbroideryEstimateResult | n
       ? null
       : readNumber(setupFeeWaivedAtQtyRaw);
 
+  const estimateMode = readEstimateMode(data.estimateMode) ?? "basic";
+  const estimatedStitchesRaw = data.estimatedStitches;
+  const estimatedStitches =
+    estimatedStitchesRaw === null || estimatedStitchesRaw === undefined
+      ? null
+      : readNumber(estimatedStitchesRaw);
+  const ratePerThousand =
+    data.ratePerThousand === null || data.ratePerThousand === undefined
+      ? null
+      : readNumber(data.ratePerThousand);
+  const minimumDecorationPrice =
+    data.minimumDecorationPrice === null || data.minimumDecorationPrice === undefined
+      ? null
+      : readNumber(data.minimumDecorationPrice);
+  const stitchPriceBeforePlacement =
+    data.stitchPriceBeforePlacement === null || data.stitchPriceBeforePlacement === undefined
+      ? null
+      : readNumber(data.stitchPriceBeforePlacement);
+
   if (
     !productSku ||
     quantity === null ||
@@ -179,6 +268,14 @@ export function parsePriceEstimate(value: unknown): EmbroideryEstimateResult | n
     quantity: Math.floor(quantity),
     placement: placement as EmbroideryEstimateResult["placement"],
     complexity: complexity as EmbroideryEstimateResult["complexity"],
+    estimateMode,
+    estimatedStitches:
+      estimatedStitches !== null && estimatedStitches > 0
+        ? Math.floor(estimatedStitches)
+        : null,
+    ratePerThousand,
+    minimumDecorationPrice,
+    stitchPriceBeforePlacement,
     blankUnitPrice,
     decorationUnitPrice,
     setupFeeOriginal,

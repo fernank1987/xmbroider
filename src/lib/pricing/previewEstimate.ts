@@ -6,6 +6,7 @@ import {
 import {
   calculateEmbroideryEstimate,
   type EmbroideryEstimateResult,
+  type EstimateMode,
   type EstimatorComplexity,
   type EstimatorPlacement,
 } from "./embroideryEstimator";
@@ -18,12 +19,23 @@ export function resolvePreviewProductPricing(
   return resolveEffectiveProductPricing(product.pricing);
 }
 
-export function buildLiveEstimate(
-  product: Pick<PreviewProduct, "id" | "productSku" | "label" | "pricing">,
-  quantity: number,
-  placement: EstimatorPlacement,
-  complexity: EstimatorComplexity,
-): EmbroideryEstimateResult {
+export type BuildLiveEstimateInput = {
+  product: Pick<PreviewProduct, "id" | "productSku" | "label" | "pricing">;
+  quantity: number;
+  placement: EstimatorPlacement;
+  complexity: EstimatorComplexity;
+  estimateMode?: EstimateMode;
+  estimatedStitches?: number | null;
+};
+
+export function buildLiveEstimate({
+  product,
+  quantity,
+  placement,
+  complexity,
+  estimateMode,
+  estimatedStitches,
+}: BuildLiveEstimateInput): EmbroideryEstimateResult {
   const pricing = resolvePreviewProductPricing(product);
   return calculateEmbroideryEstimate({
     productId: product.id,
@@ -32,5 +44,7 @@ export function buildLiveEstimate(
     placement,
     complexity,
     pricing,
+    estimateMode,
+    estimatedStitches,
   });
 }
