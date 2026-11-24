@@ -189,6 +189,13 @@ service firebase.storage {
 
 Tighten `allow write` later to match your admin email allowlist once you move checks into security rules.
 
+## Production hosting
+
+Production currently still serves from Vercel. The move to Firebase App Hosting
+(`xmbroider-production`) is documented in [`docs/firebase-app-hosting.md`](docs/firebase-app-hosting.md).
+Do not change DNS, Vercel, or create an App Hosting backend from this repo until
+that checklist’s later stages.
+
 ## Production deployment (Vercel + xmbroider.com)
 
 ### Connect the domain to Vercel
@@ -241,4 +248,6 @@ npm run dev
 npm run build
 npm run start
 npm run lint
+npm run typecheck
+npm test
 ```
