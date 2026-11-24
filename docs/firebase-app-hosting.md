@@ -98,7 +98,7 @@ empty string.
 | *(not on Vercel)* `NEXT_PUBLIC_ADMIN_EMAIL_ALLOWLIST` | `NEXT_PUBLIC_ADMIN_EMAIL_ALLOWLIST` | **secret** | BUILD + RUNTIME | Canonical allowlist. Empty/unset ⇒ **no one is admin** |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | *(do not set on App Hosting)* | — | — | Vercel / local Admin SDK JSON. App Hosting uses ADC instead (`src/lib/firebase/admin.ts`) |
 | `RESEND_API_KEY` | `RESEND_API_KEY` | **secret** | RUNTIME | |
-| `QUOTE_NOTIFICATION_EMAIL` | `QUOTE_NOTIFICATION_EMAIL` | **secret** | RUNTIME | |
+| `QUOTE_NOTIFICATION_EMAIL` | `QUOTE_NOTIFICATION_EMAIL` | **secret** | RUNTIME | Comma-separated list allowed (one Resend `to` array) |
 | `QUOTE_FROM_EMAIL` | `QUOTE_FROM_EMAIL` | **secret** | RUNTIME | |
 | `SEND_CUSTOMER_QUOTE_CONFIRMATION` | `SEND_CUSTOMER_QUOTE_CONFIRMATION` | **secret** | RUNTIME | `"true"` / unset. Unknown prod value; copy from Vercel |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | **secret** | BUILD + RUNTIME | Public widget key; keep out of git |

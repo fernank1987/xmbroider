@@ -126,12 +126,30 @@ function buildCustomerConfirmationText(name: string): string {
   ].join("\n");
 }
 
+/** Comma-separated admin notify addresses. Single address is unchanged. */
+export function parseQuoteNotificationEmails(
+  raw: string | null | undefined,
+): string[] {
+  if (!raw?.trim()) {
+    return [];
+  }
+
+  return raw
+    .split(",")
+    .map((email) => email.trim())
+    .filter(Boolean);
+}
+
+function getQuoteNotificationEmails(): string[] {
+  return parseQuoteNotificationEmails(process.env.QUOTE_NOTIFICATION_EMAIL);
+}
+
 function getMissingResendEnvVars(): string[] {
   const missing: string[] = [];
   if (!process.env.RESEND_API_KEY?.trim()) {
     missing.push("RESEND_API_KEY");
   }
-  if (!process.env.QUOTE_NOTIFICATION_EMAIL?.trim()) {
+  if (getQuoteNotificationEmails().length === 0) {
     missing.push("QUOTE_NOTIFICATION_EMAIL");
   }
   if (!process.env.QUOTE_FROM_EMAIL?.trim()) {
@@ -169,7 +187,7 @@ export async function sendQuoteNotificationEmails(
   }
 
   const apiKey = process.env.RESEND_API_KEY!.trim();
-  const notifyEmail = process.env.QUOTE_NOTIFICATION_EMAIL!.trim();
+  const notifyEmails = getQuoteNotificationEmails();
   const fromEmail = process.env.QUOTE_FROM_EMAIL!.trim();
 
   const resend = new Resend(apiKey);
@@ -178,7 +196,7 @@ export async function sendQuoteNotificationEmails(
   try {
     const adminResult = await resend.emails.send({
       from: fromEmail,
-      to: notifyEmail,
+      to: notifyEmails,
       subject,
       text: buildAdminEmailText(payload),
       html: buildAdminEmailHtml(payload),

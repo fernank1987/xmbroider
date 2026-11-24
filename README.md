@@ -97,9 +97,11 @@ When a visitor submits a quote, the app can email the admin via [Resend](https:/
 
 ```bash
 RESEND_API_KEY=re_...
-QUOTE_NOTIFICATION_EMAIL=you@example.com
+QUOTE_NOTIFICATION_EMAIL=you@example.com,other@example.com
 QUOTE_FROM_EMAIL=XMBroider <notifications@your-verified-domain.com>
 ```
+
+`QUOTE_NOTIFICATION_EMAIL` accepts a comma-separated list (one Resend message to all addresses). A single address still works.
 
 Optional customer confirmation email:
 

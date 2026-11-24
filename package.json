@@ -11,7 +11,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/app/admin/lib/adminAllowlist.test.ts src/lib/requestHost.test.ts src/lib/firebase/admin.test.ts"
+    "test": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/app/admin/lib/adminAllowlist.test.ts src/lib/requestHost.test.ts src/lib/firebase/admin.test.ts src/lib/email/sendQuoteNotification.test.ts"
   },
   "dependencies": {
     "firebase": "^12.14.0",
