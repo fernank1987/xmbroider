@@ -89,14 +89,14 @@ empty string.
 |---|---|---|---|---|
 | `NEXT_PUBLIC_FIREBASE_API_KEY` | `NEXT_PUBLIC_FIREBASE_API_KEY` | **secret** | BUILD + RUNTIME | Web API key (public in the client bundle; keep out of git) |
 | `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | **value** `xmbroider-production.firebaseapp.com` | BUILD + RUNTIME | Public |
-| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | **value** `xmbroider-production` | BUILD + RUNTIME | Public |
-| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | **value** `xmbroider-production.firebasestorage.app` | BUILD + RUNTIME | Public |
+| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | **value** `xmbroider-production` | BUILD + RUNTIME | Public; also Admin SDK `projectId` |
+| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | **value** `xmbroider-production.firebasestorage.app` | BUILD + RUNTIME | Public; also Admin SDK `storageBucket` |
 | `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | **value** `640667549080` | BUILD + RUNTIME | Public project number |
 | `NEXT_PUBLIC_FIREBASE_APP_ID` | `NEXT_PUBLIC_FIREBASE_APP_ID` | **secret** | BUILD + RUNTIME | Web app ID |
 | `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` | `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` | **secret** | BUILD + RUNTIME | Optional Analytics |
 | `NEXT_PUBLIC_ADMIN_EMAILS` | *(do not set on App Hosting)* | — | — | Vercel-only name. Copy its value into the canonical secret |
 | *(not on Vercel)* `NEXT_PUBLIC_ADMIN_EMAIL_ALLOWLIST` | `NEXT_PUBLIC_ADMIN_EMAIL_ALLOWLIST` | **secret** | BUILD + RUNTIME | Canonical allowlist. Empty/unset ⇒ **no one is admin** |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | `FIREBASE_SERVICE_ACCOUNT_JSON` | **secret** | RUNTIME | Admin SDK JSON, single line |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | *(do not set on App Hosting)* | — | — | Vercel / local Admin SDK JSON. App Hosting uses ADC instead (`src/lib/firebase/admin.ts`) |
 | `RESEND_API_KEY` | `RESEND_API_KEY` | **secret** | RUNTIME | |
 | `QUOTE_NOTIFICATION_EMAIL` | `QUOTE_NOTIFICATION_EMAIL` | **secret** | RUNTIME | |
 | `QUOTE_FROM_EMAIL` | `QUOTE_FROM_EMAIL` | **secret** | RUNTIME | |
@@ -105,6 +105,88 @@ empty string.
 | `TURNSTILE_SECRET_KEY` | `TURNSTILE_SECRET_KEY` | **secret** | RUNTIME | |
 
 Console env vars **override** `apphosting.yaml` if both are set.
+
+---
+
+## Admin SDK credentials and compute IAM
+
+`src/lib/firebase/admin.ts`: if `FIREBASE_SERVICE_ACCOUNT_JSON` is set, keep using
+`cert()` (Vercel / local). Otherwise initialize with Application Default
+Credentials:
+
+```ts
+initializeApp({
+  credential: applicationDefault(),
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+});
+```
+
+On App Hosting that is the Cloud Run runtime identity:
+
+`firebase-app-hosting-compute@xmbroider-production.iam.gserviceaccount.com`
+
+Do **not** put `FIREBASE_SERVICE_ACCOUNT_JSON` in `apphosting.yaml` — a missing
+secret would fail the rollout.
+
+### Default roles (granted at backend create)
+
+[firebase-tools](https://github.com/firebase/firebase-tools/blob/master/src/apphosting/backend.ts)
+`provisionDefaultComputeServiceAccount` grants:
+
+| Role | Default? | What it covers |
+|---|---|---|
+| `roles/firebaseapphosting.computeRunner` | **Yes** | Build/run App Hosting; includes `storage.objectUser` |
+| `roles/firebase.sdkAdminServiceAgent` | **Yes** | Admin SDK access to Firebase products (Firestore entity CRUD is in this role’s permission list) |
+| `roles/developerconnect.readTokenAccessor` | **Yes** | GitHub connection |
+| `roles/storage.objectViewer` | **Yes** | Storage **read** only |
+
+Official App Hosting docs describe this as a **minimal** set and only mention
+Admin SDK **loading** (read) Firestore data
+([About App Hosting](https://firebase.google.com/docs/app-hosting/about-app-hosting)).
+They do **not** list `roles/datastore.user` or `roles/storage.objectAdmin` as
+defaults.
+
+This app **writes** Firestore (quotes, notification status, admin delete) and
+**writes/deletes** Storage objects (composite preview upload, quote file
+cleanup). Do not rely on the nested permissions inside
+`sdkAdminServiceAgent` / `computeRunner` for that — grant the data roles
+explicitly at stage 3.
+
+### Grant these (stage 3 — not done from this PR)
+
+```bash
+# Firestore read/write (quotes, notification status, admin delete)
+gcloud projects add-iam-policy-binding xmbroider-production \
+  --member="serviceAccount:firebase-app-hosting-compute@xmbroider-production.iam.gserviceaccount.com" \
+  --role="roles/datastore.user"
+
+# Storage object create / update / delete (composite upload, quote file cleanup)
+# objectViewer (default) is not enough.
+gcloud projects add-iam-policy-binding xmbroider-production \
+  --member="serviceAccount:firebase-app-hosting-compute@xmbroider-production.iam.gserviceaccount.com" \
+  --role="roles/storage.objectAdmin"
+```
+
+Equivalent Storage grant on the bucket only (instead of project-wide objectAdmin):
+
+```bash
+gsutil iam ch \
+  serviceAccount:firebase-app-hosting-compute@xmbroider-production.iam.gserviceaccount.com:objectAdmin \
+  gs://xmbroider-production.firebasestorage.app
+```
+
+### `roles/iam.serviceAccountTokenCreator` — not needed today
+
+ADC on Cloud Run cannot sign with a local private key. V4 `getSignedUrl`,
+`createCustomToken`, and `signBlob` need the runtime SA to impersonate/sign as
+itself (`roles/iam.serviceAccountTokenCreator` on
+`firebase-app-hosting-compute@…`).
+
+This codebase does **not** call `getSignedUrl` or `createCustomToken`. Composite
+downloads use Firebase download tokens (`firebaseStorageDownloadTokens` + a
+constructed URL). Auth verification uses JWKS (`jose`), not Admin Auth. **Do not
+grant Token Creator unless those APIs are added later.**
 
 ---
 
@@ -162,7 +244,8 @@ Do this only with a GO. Do **not** run these from the Stage 2 PR.
    (`1:640667549080:web:76d03805bd4d3ae8c23fed`) so
    `FIREBASE_WEBAPP_CONFIG` is populated (still set the `NEXT_PUBLIC_*` keys;
    the app reads those names, not the auto JSON).
-6. Create every secret in the table (except the four `value:` keys):
+6. Create every secret in the table (except the four `value:` keys). **Do not**
+   create `FIREBASE_SERVICE_ACCOUNT_JSON` for App Hosting.
 
    ```bash
    firebase apphosting:secrets:set NEXT_PUBLIC_FIREBASE_API_KEY --project xmbroider-production
@@ -170,7 +253,6 @@ Do this only with a GO. Do **not** run these from the Stage 2 PR.
    firebase apphosting:secrets:set NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID --project xmbroider-production
    firebase apphosting:secrets:set NEXT_PUBLIC_ADMIN_EMAIL_ALLOWLIST --project xmbroider-production
    firebase apphosting:secrets:set NEXT_PUBLIC_TURNSTILE_SITE_KEY --project xmbroider-production
-   firebase apphosting:secrets:set FIREBASE_SERVICE_ACCOUNT_JSON --project xmbroider-production
    firebase apphosting:secrets:set RESEND_API_KEY --project xmbroider-production
    firebase apphosting:secrets:set QUOTE_NOTIFICATION_EMAIL --project xmbroider-production
    firebase apphosting:secrets:set QUOTE_FROM_EMAIL --project xmbroider-production
@@ -186,9 +268,12 @@ Do this only with a GO. Do **not** run these from the Stage 2 PR.
    firebase apphosting:secrets:grantaccess SECRET_NAME --project xmbroider-production
    ```
 
-7. Do **not** add a custom domain yet. Note the `*.hosted.app` URL.
-8. Confirm Cloud Run `minInstances` is 0 after the first rollout.
-9. Optional: budget alert / Cloud Run spend cap on the Blaze project.
+7. Grant the compute SA Firestore + Storage write roles (see **Admin SDK
+   credentials and compute IAM** above). Backend create does **not** grant
+   `roles/datastore.user` or `roles/storage.objectAdmin` by default.
+8. Do **not** add a custom domain yet. Note the `*.hosted.app` URL.
+9. Confirm Cloud Run `minInstances` is 0 after the first rollout.
+10. Optional: budget alert / Cloud Run spend cap on the Blaze project.
 
 ---
 
@@ -210,7 +295,8 @@ Smoke list:
 - [ ] Resend admin email (and customer confirmation if that flag is `"true"`)
 - [ ] Turnstile (no silent bypass in production)
 - [ ] Images: `next/image` + `sharp`; product photos from Storage
-- [ ] Logo preview composite (`/api/preview-composite`, Admin SDK + sharp)
+- [ ] Logo preview composite (`/api/preview-composite`, Admin SDK + sharp via ADC)
+- [ ] Quote notification status persisted to Firestore (Admin SDK write, no JSON key)
 - [ ] Admin: sign-in, allowlist deny for a non-listed user, listed user OK
 - [ ] Admin quote delete (`DELETE /api/admin/quote-requests/...`)
 - [ ] `next.config.ts` WordPress redirects (`/home`, `/shop`, `/product/...`, etc.)
@@ -305,6 +391,9 @@ Leave mail records alone. Firebase TXT / `_acme-challenge` can stay for a retry.
 - Next 16.2.9 vs App Hosting’s documented active Next 15.2.x — verify on
   `hosted.app`
 - First rollout fails if any `secret:` name is missing in Secret Manager
+  (`FIREBASE_SERVICE_ACCOUNT_JSON` is no longer in that list)
+- Admin SDK writes fail on `hosted.app` until compute SA has
+  `roles/datastore.user` and `roles/storage.objectAdmin` (not default)
 - Admin fail-closed: if `NEXT_PUBLIC_ADMIN_EMAIL_ALLOWLIST` is not copied from
   Vercel’s `NEXT_PUBLIC_ADMIN_EMAILS`, **nobody** can use admin after this code
   ships (including on Vercel, unless the fallback env is still set)

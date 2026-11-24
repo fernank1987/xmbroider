@@ -47,7 +47,7 @@ export type UploadServerCompositeResult = {
 };
 
 const ADMIN_DISABLED_MESSAGE =
-  "Server composite export is not configured. Add FIREBASE_SERVICE_ACCOUNT_JSON.";
+  "Server composite export is not configured. Set FIREBASE_SERVICE_ACCOUNT_JSON, or run on App Hosting with ADC.";
 
 function parseHexColor(hex: string): { r: number; g: number; b: number } {
   const normalized = hex.replace("#", "").trim();

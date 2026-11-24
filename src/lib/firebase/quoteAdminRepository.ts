@@ -9,7 +9,7 @@ import { getAdminFirestore } from "./admin";
 import { removeUndefinedDeep } from "./firestoreUtils";
 
 const ADMIN_DISABLED_MESSAGE =
-  "Server quote storage is not configured. Add FIREBASE_SERVICE_ACCOUNT_JSON.";
+  "Server quote storage is not configured. Set FIREBASE_SERVICE_ACCOUNT_JSON, or run on App Hosting with ADC.";
 
 function buildQuoteRequestAdminPayload(
   siteId: string,
