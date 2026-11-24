@@ -88,6 +88,10 @@ export async function verifyAdminRequest(
     console.log(`${logPrefix} email matched allowlist`, emailAllowed);
 
     if (!emailAllowed) {
+      if (!isAdminEmailAllowlistConfigured()) {
+        console.warn(`${logPrefix} allowlist unset; failing closed`);
+        return { error: "Admin allowlist is not configured.", status: 403 };
+      }
       console.warn(`${logPrefix} allowlist denied`, decoded.email);
       return { error: "Email not on admin allowlist.", status: 403 };
     }

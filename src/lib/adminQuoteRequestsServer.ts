@@ -2,7 +2,7 @@ import { getAdminFirestore, getAdminStorageBucket } from "./firebase/admin";
 import { getQuoteUploadStoragePath } from "./firebase/storageRepository";
 
 const ADMIN_DISABLED_MESSAGE =
-  "Admin delete is not configured. Add FIREBASE_SERVICE_ACCOUNT_JSON.";
+  "Admin delete is not configured. Set FIREBASE_SERVICE_ACCOUNT_JSON, or run on App Hosting with ADC.";
 
 export type DeleteQuoteRequestAdminResult = {
   quoteRequestId: string;

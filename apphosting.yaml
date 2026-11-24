@@ -1,0 +1,110 @@
+# Firebase App Hosting configuration for xmbroider.com.
+# Project: xmbroider-production. No backends are created by this file.
+# Secret values live in Cloud Secret Manager, not in git.
+#
+# Docs: https://firebase.google.com/docs/app-hosting/configure
+# Env mapping and stage 3–5 steps: docs/firebase-app-hosting.md
+
+# Cloud Run serving settings.
+# cpu / memoryMiB / concurrency left at App Hosting defaults (1 CPU, 512 MiB, 80).
+# minInstances: 0 keeps the no-cost Cloud Run allowances available at current traffic
+# (~3k function invocations/month). A warm instance would add idle cost.
+# maxInstances: 2 is a spend cap. Default 100 is far above this site's load and
+# would amplify a runaway loop (quote/composite routes use sharp + Admin SDK).
+# Stage 4 on *.hosted.app can raise this if concurrent exports queue.
+runConfig:
+  minInstances: 0
+  maxInstances: 2
+
+env:
+  # --- Public Firebase web config (already public project metadata) ---
+  # NEXT_PUBLIC_* must be available at BUILD so Next.js can inline them.
+  # Also RUNTIME: server routes read the same keys (Admin SDK bucket, ID-token audience).
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: xmbroider-production
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: xmbroider-production.firebaseapp.com
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: xmbroider-production.firebasestorage.app
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "640667549080"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  # --- Client-inlined values that must not be committed ---
+  # These use Secret Manager so they stay out of git. NEXT_PUBLIC_ prefix still
+  # inlines them into the browser bundle at build time (existing Next.js behavior).
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    secret: NEXT_PUBLIC_FIREBASE_API_KEY
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    secret: NEXT_PUBLIC_FIREBASE_APP_ID
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+    secret: NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+    availability:
+      - BUILD
+      - RUNTIME
+
+  # Canonical admin allowlist (comma-separated emails). Code also accepts
+  # NEXT_PUBLIC_ADMIN_EMAILS as a Vercel-period fallback; do not set that name
+  # on App Hosting — copy Vercel's NEXT_PUBLIC_ADMIN_EMAILS value into this secret.
+  - variable: NEXT_PUBLIC_ADMIN_EMAIL_ALLOWLIST
+    secret: NEXT_PUBLIC_ADMIN_EMAIL_ALLOWLIST
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_TURNSTILE_SITE_KEY
+    secret: NEXT_PUBLIC_TURNSTILE_SITE_KEY
+    availability:
+      - BUILD
+      - RUNTIME
+
+  # --- Server-only secrets (RUNTIME only; not needed at Cloud Build) ---
+  # FIREBASE_SERVICE_ACCOUNT_JSON is intentionally omitted. Vercel still uses that
+  # env var; App Hosting initializes the Admin SDK with Application Default
+  # Credentials (compute SA). See docs/firebase-app-hosting.md.
+  - variable: RESEND_API_KEY
+    secret: RESEND_API_KEY
+    availability:
+      - RUNTIME
+
+  - variable: QUOTE_NOTIFICATION_EMAIL
+    secret: QUOTE_NOTIFICATION_EMAIL
+    availability:
+      - RUNTIME
+
+  - variable: QUOTE_FROM_EMAIL
+    secret: QUOTE_FROM_EMAIL
+    availability:
+      - RUNTIME
+
+  - variable: SEND_CUSTOMER_QUOTE_CONFIRMATION
+    secret: SEND_CUSTOMER_QUOTE_CONFIRMATION
+    availability:
+      - RUNTIME
+
+  - variable: TURNSTILE_SECRET_KEY
+    secret: TURNSTILE_SECRET_KEY
+    availability:
+      - RUNTIME

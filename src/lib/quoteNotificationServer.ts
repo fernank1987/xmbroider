@@ -1,4 +1,7 @@
-import { sendQuoteNotificationEmails } from "@/lib/email/sendQuoteNotification";
+import {
+  parseQuoteNotificationEmails,
+  sendQuoteNotificationEmails,
+} from "@/lib/email/sendQuoteNotification";
 import type { QuoteNotificationPayload } from "@/lib/email/quoteNotificationTypes";
 import { getAdminFirestore } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
@@ -12,14 +15,17 @@ function getErrorMessage(error: unknown, fallback: string): string {
 
 function getResendEnvDiagnostics() {
   const quoteFromEmail = process.env.QUOTE_FROM_EMAIL?.trim() || null;
-  const quoteNotificationEmail = process.env.QUOTE_NOTIFICATION_EMAIL?.trim() || null;
+  const quoteNotificationEmails = parseQuoteNotificationEmails(
+    process.env.QUOTE_NOTIFICATION_EMAIL,
+  );
 
   return {
     hasResendApiKey: Boolean(process.env.RESEND_API_KEY?.trim()),
-    hasQuoteNotificationEmail: Boolean(quoteNotificationEmail),
+    hasQuoteNotificationEmail: quoteNotificationEmails.length > 0,
     hasQuoteFromEmail: Boolean(quoteFromEmail),
     quoteFromEmail: quoteFromEmail ?? "(missing)",
-    quoteNotificationEmail: quoteNotificationEmail ? "(set)" : "(missing)",
+    quoteNotificationEmail:
+      quoteNotificationEmails.length > 0 ? "(set)" : "(missing)",
   };
 }
 

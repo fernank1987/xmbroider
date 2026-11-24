@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getRequestUrl } from "@/lib/requestHost";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,7 +40,7 @@ function isAllowedImageUrl(rawUrl: string): boolean {
 }
 
 export async function GET(request: Request) {
-  const requestUrl = new URL(request.url);
+  const requestUrl = getRequestUrl(request);
   const imageUrl = requestUrl.searchParams.get("url")?.trim();
 
   if (!imageUrl || !isAllowedImageUrl(imageUrl)) {
